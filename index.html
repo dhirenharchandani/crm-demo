@@ -1,0 +1,2275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#3b82f6">
+<title>Inner Game CRM</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  // ─── Firebase Configuration ───
+  // REPLACE with your Firebase project config
+  const FIREBASE_CONFIG = {
+    apiKey: "PLACEHOLDER",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "1:YOUR_SENDER_ID:web:009fa9d1ac68d49e0f6f9b"
+  };
+
+  // Initialize Firebase
+  const _fbReady = FIREBASE_CONFIG.apiKey !== "PLACEHOLDER";
+  let _fbApp, _fbAuth, _fbDb;
+  if (_fbReady) {
+    _fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    _fbAuth = firebase.auth();
+    _fbDb = firebase.firestore();
+    _fbDb.enablePersistence({ synchronizeTabs: true }).catch(e => console.warn('[CRM] Firestore persistence:', e.code));
+  }
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  /* ─── CSS Custom Properties (Light Theme) ─── */
+  :root {
+    --bg-primary: #f8fafc; --bg-secondary: #ffffff; --bg-tertiary: #f1f5f9;
+    --bg-hover: #f1f5f9; --bg-active: #e2e8f0;
+    --text-primary: #0f172a; --text-secondary: #475569; --text-tertiary: #94a3b8;
+    --border: #e2e8f0; --border-light: #f1f5f9;
+    --accent: #6366f1; --accent-hover: #4f46e5; --accent-light: #eef2ff;
+    --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --card-shadow-hover: 0 4px 12px rgba(0,0,0,0.08);
+    --input-bg: #ffffff; --input-border: #d1d5db;
+    --sidebar-bg: #ffffff; --topbar-bg: #ffffff;
+    --scrollbar-track: #f1f5f9; --scrollbar-thumb: #cbd5e1;
+    --overlay: rgba(0,0,0,0.4);
+  }
+
+  /* ─── Dark Theme ─── */
+  .dark {
+    --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-tertiary: #334155;
+    --bg-hover: #334155; --bg-active: #475569;
+    --text-primary: #f1f5f9; --text-secondary: #94a3b8; --text-tertiary: #64748b;
+    --border: #334155; --border-light: #1e293b;
+    --accent: #818cf8; --accent-hover: #6366f1; --accent-light: #1e1b4b;
+    --card-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --card-shadow-hover: 0 4px 12px rgba(0,0,0,0.4);
+    --input-bg: #1e293b; --input-border: #475569;
+    --sidebar-bg: #1e293b; --topbar-bg: #1e293b;
+    --scrollbar-track: #1e293b; --scrollbar-thumb: #475569;
+    --overlay: rgba(0,0,0,0.6);
+  }
+
+  * { font-family: 'Inter', -apple-system, sans-serif; box-sizing: border-box; }
+  body { background: var(--bg-primary); color: var(--text-primary); margin: 0; transition: background 0.3s, color 0.3s; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+
+  /* ─── Components ─── */
+  .pipeline-col { min-width: 260px; max-height: calc(100vh - 200px); overflow-y: auto; }
+  .card-drag { cursor: grab; transition: all 0.15s; }
+  .card-drag:hover { transform: translateY(-2px); box-shadow: var(--card-shadow-hover); }
+  .modal-overlay { background: var(--overlay); backdrop-filter: blur(4px); }
+  .stat-card { background: var(--bg-secondary); border: 1px solid var(--border); box-shadow: var(--card-shadow); border-radius: 12px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+
+  input, textarea, select {
+    background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-primary);
+    border-radius: 8px; padding: 8px 12px; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+
+  .overdue { animation: pulse-red 2s infinite; }
+  @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 50% { box-shadow: 0 0 0 4px rgba(239,68,68,0); } }
+
+  .trigger-badge { font-size: 9px; padding: 1px 6px; border-radius: 4px; font-weight: 700; text-transform: uppercase; }
+  .trigger-overdue { background: #fef2f2; color: #dc2626; }
+  .trigger-stale { background: #fffbeb; color: #d97706; }
+  .trigger-scheduled { background: #f0fdf4; color: #16a34a; }
+  .dark .trigger-overdue { background: #450a0a; color: #fca5a5; }
+  .dark .trigger-stale { background: #451a03; color: #fcd34d; }
+  .dark .trigger-scheduled { background: #052e16; color: #86efac; }
+
+  .sidebar-item { transition: all 0.15s; cursor: pointer; padding: 10px 16px; border-radius: 8px; display: flex; align-items: center; gap: 10px; color: var(--text-secondary); }
+  .sidebar-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .sidebar-item.active { background: var(--accent); color: white; }
+  .drag-over { background: var(--accent-light) !important; border: 2px dashed var(--accent) !important; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; background: var(--accent-light); color: var(--accent); }
+
+  .detail-panel { width: 420px; border-left: 1px solid var(--border); background: var(--bg-secondary); transition: width 0.2s; overflow-y: auto; flex-shrink: 0; }
+  .detail-panel-enter { animation: slideIn 0.2s ease-out; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  .quick-action { opacity: 0; transition: opacity 0.15s; }
+  tr:hover .quick-action, .pipeline-card:hover .quick-action { opacity: 1; }
+  .funnel-bar { transition: width 0.4s ease-out; min-width: 2px; }
+
+  .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px;
+    background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-family: monospace; color: var(--text-secondary); box-shadow: 0 1px 0 var(--border); }
+  .shortcut-overlay { position: fixed; inset: 0; z-index: 100; background: var(--overlay); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; }
+  .toast { position: fixed; bottom: 24px; right: 24px; z-index: 200; background: var(--accent); color: white; padding: 12px 20px; border-radius: 10px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); animation: toastIn 0.3s ease-out; }
+  @keyframes toastIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* Dark mode overrides for Tailwind utility classes */
+  .dark .bg-white { background: var(--bg-secondary) !important; }
+  .dark .bg-gray-50 { background: var(--bg-tertiary) !important; }
+  .dark .bg-gray-100 { background: var(--bg-tertiary) !important; }
+  .dark .border { border-color: var(--border) !important; }
+  .dark .border-t { border-color: var(--border) !important; }
+  .dark .border-b { border-color: var(--border) !important; }
+  .dark .border-r { border-color: var(--border) !important; }
+  .dark .border-l { border-color: var(--border) !important; }
+  .dark .text-gray-600 { color: var(--text-secondary) !important; }
+  .dark .text-gray-500 { color: var(--text-secondary) !important; }
+  .dark .text-gray-400 { color: var(--text-tertiary) !important; }
+  .dark .text-gray-300 { color: var(--text-tertiary) !important; }
+  .dark .text-gray-700 { color: var(--text-primary) !important; }
+  .dark .text-gray-800 { color: var(--text-primary) !important; }
+  .dark .hover\:bg-gray-50:hover { background: var(--bg-hover) !important; }
+  .dark .hover\:bg-gray-200:hover { background: var(--bg-active) !important; }
+  .dark table thead { background: var(--bg-tertiary) !important; }
+  .dark table tbody tr { border-color: var(--border) !important; }
+  .dark table tbody tr:hover { background: var(--bg-hover) !important; }
+
+  /* Dark mode soft-color overrides */
+  .dark .bg-red-50, .dark .bg-red-100 { background: #450a0a !important; }
+  .dark .bg-green-50, .dark .bg-green-100 { background: #052e16 !important; }
+  .dark .bg-blue-50, .dark .bg-blue-100 { background: #172554 !important; }
+  .dark .bg-yellow-50, .dark .bg-yellow-100 { background: #422006 !important; }
+  .dark .bg-orange-50 { background: #431407 !important; }
+  .dark .bg-indigo-50 { background: #1e1b4b !important; }
+  .dark .bg-purple-50 { background: #2e1065 !important; }
+  .dark .bg-amber-50 { background: #451a03 !important; }
+  .dark .border-red-200 { border-color: #7f1d1d !important; }
+  .dark .border-green-200 { border-color: #14532d !important; }
+  .dark .border-blue-200 { border-color: #1e3a5f !important; }
+  .dark .border-amber-200 { border-color: #78350f !important; }
+  .dark .border-orange-200 { border-color: #7c2d12 !important; }
+
+  /* ─── Dark mode toggle button ─── */
+  .theme-toggle { position: relative; width: 44px; height: 24px; border-radius: 12px; border: none; cursor: pointer;
+    background: var(--bg-tertiary); border: 1px solid var(--border); transition: background 0.3s; padding: 0; }
+  .theme-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); transition: transform 0.3s; }
+  .dark .theme-toggle::after { transform: translateX(20px); }
+
+  /* ─── Mobile Responsive ─── */
+  @media (max-width: 768px) {
+    .desktop-sidebar { display: none !important; }
+    .mobile-bottom-nav { display: flex !important; }
+    .detail-panel { position: fixed; inset: 0; width: 100% !important; z-index: 60; border-left: none; }
+    .detail-panel-enter { animation: slideUp 0.25s ease-out; }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .desktop-topbar .backup-text { display: none; }
+    .desktop-topbar .kbd { display: none; }
+    .main-content { padding: 12px !important; padding-bottom: 72px !important; }
+    .stat-card { padding: 12px !important; }
+    .stat-card .text-3xl { font-size: 1.5rem !important; }
+    .contact-table { display: none !important; }
+    .contact-cards-mobile { display: block !important; }
+    .quick-action { opacity: 1 !important; }
+    .pipeline-col { min-width: 200px !important; }
+    .toast { bottom: 80px; left: 16px; right: 16px; text-align: center; }
+    .shortcut-overlay { display: none !important; }
+    .funnel-label { width: 80px !important; }
+    .funnel-value { width: 60px !important; }
+  }
+  @media (min-width: 769px) {
+    .mobile-bottom-nav { display: none !important; }
+    .contact-cards-mobile { display: none !important; }
+  }
+  .mobile-bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+    background: var(--bg-secondary); border-top: 1px solid var(--border);
+    padding: 4px 0; padding-bottom: env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .mobile-tab { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 6px 8px; min-width: 56px; border-radius: 8px; font-size: 10px; color: var(--text-tertiary); cursor: pointer;
+    -webkit-tap-highlight-color: transparent; }
+  .mobile-tab.active { color: var(--accent); background: var(--accent-light); }
+  .mobile-tab span:first-child { font-size: 18px; line-height: 1; }
+
+  /* ─── Login Screen ─── */
+  .login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg-primary); padding: 20px; }
+  .login-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 16px;
+    padding: 40px; max-width: 400px; width: 100%; text-align: center; box-shadow: var(--card-shadow); }
+  .login-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 24px;
+    background: var(--accent); border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    color: white; cursor: pointer; transition: opacity 0.2s; width: 100%; }
+  .login-btn:hover { opacity: 0.9; }
+  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .login-input { width: 100%; padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 12px;
+    background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-primary); }
+  .login-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+  .login-error { color: #ef4444; font-size: 12px; margin-bottom: 8px; }
+  .sync-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px;
+    font-size: 10px; font-weight: 600; }
+  .sync-online { background: #dcfce7; color: #16a34a; }
+  .sync-offline { background: #fef3c7; color: #d97706; }
+  .dark .sync-online { background: #052e16; color: #86efac; }
+  .dark .sync-offline { background: #451a03; color: #fcd34d; }
+  .dark .login-input { background: #1e293b; border-color: #475569; color: #f1f5f9; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ─── Constants ───
+const STORAGE_KEY = 'YOUR_PROJECT_ID-data';
+const STORAGE_VERSION = 7;
+const BACKUP_KEY = STORAGE_KEY + '-backup';
+const MASTER_DATA_VERSION = '2026-03-19T21';
+const MASTER_VERSION_KEY = STORAGE_KEY + '-master-version';
+const LAST_BACKUP_DOWNLOAD_KEY = STORAGE_KEY + '-last-backup-download';
+const BACKUP_REMINDER_DAYS = 3;
+const IDB_NAME = 'YOUR_PROJECT_ID-idb';
+const IDB_STORE = 'backups';
+const IDB_KEY = 'latest';
+
+// ─── IndexedDB Secondary Backup ───
+const idbOpen = () => new Promise((resolve, reject) => {
+  const req = indexedDB.open(IDB_NAME, 1);
+  req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => reject(req.error);
+});
+
+const idbSave = async (data) => {
+  try {
+    const db = await idbOpen();
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const json = JSON.stringify(data);
+    const hash = await computeHash(json);
+    tx.objectStore(IDB_STORE).put({ json, hash, timestamp: Date.now() }, IDB_KEY);
+    // Also keep a timestamped snapshot (max 5)
+    tx.objectStore(IDB_STORE).put({ json, hash, timestamp: Date.now() }, 'snapshot-' + Date.now());
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    // Cleanup old snapshots
+    const tx2 = db.transaction(IDB_STORE, 'readwrite');
+    const store2 = tx2.objectStore(IDB_STORE);
+    const allKeys = await new Promise(res => { const r = store2.getAllKeys(); r.onsuccess = () => res(r.result); });
+    const snapKeys = allKeys.filter(k => typeof k === 'string' && k.startsWith('snapshot-')).sort().reverse();
+    snapKeys.slice(5).forEach(k => store2.delete(k));
+    db.close();
+  } catch(e) { console.warn('[CRM] IDB save failed:', e); }
+};
+
+const idbLoad = async () => {
+  try {
+    const db = await idbOpen();
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const result = await new Promise((res, rej) => { const r = tx.objectStore(IDB_STORE).get(IDB_KEY); r.onsuccess = () => res(r.result); r.onerror = rej; });
+    db.close();
+    if (!result) return null;
+    // Verify integrity
+    const hash = await computeHash(result.json);
+    if (hash !== result.hash) { console.error('[CRM] IDB integrity check FAILED'); return null; }
+    return JSON.parse(result.json);
+  } catch(e) { console.warn('[CRM] IDB load failed:', e); return null; }
+};
+
+// ─── Data Integrity Hash ───
+const computeHash = async (str) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+const MASTER_DATA = {"version": 7, "contacts": [], "stages": ["Bloom Clients", "Old Clients", "Bloom Connectors", "Bloom Leads", "Coach Leads", "Coaches", "Closed Opportunities", "Inner Game Client", "Not Interested/Lost", "Contacts", "Friends"], "cadence": {"Bloom Clients": 7, "Old Clients": 21, "Bloom Connectors": 14, "Bloom Leads": 7, "Coach Leads": 5, "Coaches": 7, "Closed Opportunities": 30, "Friends": 30}};
+
+const DEFAULT_STAGES = MASTER_DATA.stages;
+
+const STAGE_COLORS = {
+  'Bloom Clients': '#10b981', 'Old Clients': '#f59e0b',
+  'Bloom Connectors': '#8b5cf6', 'Bloom Leads': '#3b82f6',
+  'Coach Leads': '#06b6d4', 'Coaches': '#14b8a6',
+  'Closed Opportunities': '#ef4444', 'Inner Game Client': '#6366f1',
+  'Not Interested/Lost': '#64748b', 'Contacts': '#ec4899', 'Friends': '#f472b6'
+};
+
+const FALLBACK_COLORS = ['#6366f1','#ec4899','#f97316','#84cc16','#0ea5e9','#a855f7','#14b8a6','#f43f5e','#eab308','#64748b'];
+
+const DEFAULT_CADENCE = MASTER_DATA.cadence || {
+  'Bloom Clients': 7, 'Old Clients': 21, 'Bloom Connectors': 14,
+  'Bloom Leads': 7, 'Coach Leads': 5, 'Coaches': 7,
+  'Closed Opportunities': 30
+};
+
+const STAGNATION = {
+  'Bloom Clients': 21, 'Old Clients': 30, 'Bloom Connectors': 21,
+  'Bloom Leads': 14, 'Coach Leads': 10, 'Coaches': 14,
+  'Closed Opportunities': 60, 'Inner Game Client': 21,
+  'Not Interested/Lost': 90, 'Contacts': 30, 'Friends': 30, default: 30
+};
+
+const STAGE_PROBABILITY = {
+  'Bloom Leads': 0.1, 'Coach Leads': 0.15, 'Contacts': 0.05,
+  'Bloom Connectors': 0.2, 'Coaches': 0.3, 'Bloom Clients': 0.8,
+  'Inner Game Client': 0.9, 'Old Clients': 0.4,
+  'Closed Opportunities': 0.0, 'Not Interested/Lost': 0.0, 'Friends': 0.0,
+  default: 0.25
+};
+
+const getStageProbability = (stage) => STAGE_PROBABILITY[stage] !== undefined ? STAGE_PROBABILITY[stage] : STAGE_PROBABILITY.default;
+
+const getStageColor = (stage) => {
+  if (STAGE_COLORS[stage]) return STAGE_COLORS[stage];
+  let hash = 0;
+  for (let i = 0; i < stage.length; i++) hash = stage.charCodeAt(i) + ((hash << 5) - hash);
+  return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
+};
+
+// ─── Utilities ───
+const today = () => new Date().toISOString().split('T')[0];
+
+const daysBetween = (d1, d2) => {
+  const a = new Date(d1), b = new Date(d2);
+  return Math.round((b - a) / (1000 * 60 * 60 * 24));
+};
+
+const calculateNextFollowUp = (stage, cadence, fromDate) => {
+  const days = (cadence && cadence[stage]) || DEFAULT_CADENCE[stage] || 14;
+  const d = fromDate ? new Date(fromDate + 'T00:00:00') : new Date();
+  d.setDate(d.getDate() + days);
+  const result = d.toISOString().split('T')[0];
+  const t = today();
+  return result < t ? t : result;
+};
+
+const formatDate = (d) => {
+  if (!d) return '\u2014';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const getFollowUpStatus = (nextFollowUp) => {
+  if (!nextFollowUp) return { label: 'No date', cls: 'text-gray-400' };
+  const diff = daysBetween(today(), nextFollowUp);
+  if (diff < 0) return { label: Math.abs(diff) + 'd overdue', cls: 'text-red-600 font-bold' };
+  if (diff === 0) return { label: 'Today', cls: 'text-orange-500 font-bold' };
+  if (diff <= 3) return { label: 'In ' + diff + 'd', cls: 'text-yellow-600' };
+  return { label: 'In ' + diff + 'd', cls: 'text-green-600' };
+};
+
+const exportContactsToCSV = (contacts) => {
+  const headers = ['Name','Company','Stage','Email','Phone','Source','Deal Value','Monthly Revenue','Last Contacted','Next Follow-Up','Priority','Notes','Tags'];
+  const rows = contacts.map(c => [
+    c.name, c.company||'', c.stage, c.email||'', c.phone||'', c.source||'',
+    c.dealValue||0, c.monthlyRevenue||0, c.lastContactDate||'', c.nextFollowUp||'', c.priority||'',
+    (c.notes||'').replace(/"/g,'""'), (c.tags||[]).join(';')
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.map(v => '"'+v+'"').join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'crm-contacts-export.csv'; a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ─── Data Persistence ───
+const getDefaultData = () => migrateData(JSON.parse(JSON.stringify(MASTER_DATA)));
+
+const migrateData = (data) => {
+  if (!data.stages) data.stages = DEFAULT_STAGES;
+  if (!data.cadence) data.cadence = {...DEFAULT_CADENCE};
+  const cad = data.cadence;
+  const t = today();
+  data.contacts = (data.contacts || []).map(c => {
+    const migrated = {
+      ...c,
+      tags: c.tags || [],
+      interactions: c.interactions || [],
+      notesTimeline: c.notesTimeline || [],
+      monthlyRevenue: c.monthlyRevenue || 0,
+      createdAt: c.createdAt || new Date().toISOString(),
+      lastContactDate: c.lastContactDate || c.lastContacted || '',
+      stageChangedAt: c.stageChangedAt || new Date().toISOString()
+    };
+    if (!migrated.nextFollowUp || migrated.nextFollowUp < t) {
+      const baseDate = migrated.lastContactDate || t;
+      migrated.nextFollowUp = calculateNextFollowUp(migrated.stage, cad, baseDate);
+    }
+    return migrated;
+  });
+  data.version = STORAGE_VERSION;
+  return data;
+};
+
+const loadData = () => {
+  try {
+    const storedVersion = localStorage.getItem(MASTER_VERSION_KEY);
+    if (storedVersion !== MASTER_DATA_VERSION) {
+      console.log('[CRM] Master data version mismatch: stored=' + storedVersion + ' current=' + MASTER_DATA_VERSION);
+      const oldRaw = localStorage.getItem(STORAGE_KEY);
+      if (oldRaw) {
+        localStorage.setItem(STORAGE_KEY + '-pre-update-' + Date.now(), oldRaw);
+        console.log('[CRM] Backed up old data before master update');
+        try {
+          const oldData = migrateData(JSON.parse(oldRaw));
+          const freshData = getDefaultData();
+          const existingIds = new Set((oldData.contacts || []).map(c => c.id));
+          const existingNames = new Set((oldData.contacts || []).map(c => c.name.toLowerCase().trim()));
+          const newContacts = (freshData.contacts || []).filter(c => !existingIds.has(c.id) && !existingNames.has(c.name.toLowerCase().trim()));
+          const mergedStages = [...new Set([...(oldData.stages || []), ...(freshData.stages || [])])];
+          const mergedCadence = {...(freshData.cadence || {}), ...(oldData.cadence || {})};
+          const merged = {...oldData, contacts: [...oldData.contacts, ...newContacts], stages: mergedStages, cadence: mergedCadence};
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          localStorage.setItem(MASTER_VERSION_KEY, MASTER_DATA_VERSION);
+          console.log('[CRM] Merged: kept ' + oldData.contacts.length + ' existing + added ' + newContacts.length + ' new contacts');
+          return merged;
+        } catch(e) {
+          console.error('[CRM] Merge failed, restoring old data', e);
+          const oldData = migrateData(JSON.parse(oldRaw));
+          localStorage.setItem(STORAGE_KEY, oldRaw);
+          localStorage.setItem(MASTER_VERSION_KEY, MASTER_DATA_VERSION);
+          return oldData;
+        }
+      }
+      const freshData = getDefaultData();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(freshData));
+      localStorage.setItem(MASTER_VERSION_KEY, MASTER_DATA_VERSION);
+      console.log('[CRM] Fresh install: loaded embedded master data (' + freshData.contacts.length + ' contacts)');
+      return freshData;
+    }
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      const backup = localStorage.getItem(BACKUP_KEY);
+      if (backup) {
+        try {
+          let bdata = JSON.parse(backup);
+          bdata = migrateData(bdata);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(bdata));
+          console.log('[CRM] Restored from backup');
+          return bdata;
+        } catch(e) { console.error('[CRM] Backup restore failed', e); }
+      }
+      return getDefaultData();
+    }
+    let data = JSON.parse(raw);
+    data = migrateData(data);
+    return data;
+  } catch (e) {
+    console.error('[CRM] Load error:', e);
+    try {
+      const backup = localStorage.getItem(BACKUP_KEY);
+      if (backup) {
+        let bdata = JSON.parse(backup);
+        return migrateData(bdata);
+      }
+    } catch(e2) {}
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) localStorage.setItem(STORAGE_KEY + '-emergency-' + Date.now(), raw);
+    } catch(e3) {}
+    return getDefaultData();
+  }
+};
+
+const saveData = (data) => {
+  try {
+    const json = JSON.stringify(data);
+    const existing = localStorage.getItem(STORAGE_KEY);
+    if (existing) localStorage.setItem(BACKUP_KEY, existing);
+    localStorage.setItem(STORAGE_KEY, json);
+    // Also save to IndexedDB as secondary backup
+    idbSave(data);
+  } catch (e) {
+    console.error('[CRM] Save error:', e);
+    // Try IndexedDB even if localStorage failed
+    idbSave(data);
+    alert('Warning: localStorage save failed. Data was saved to IndexedDB backup.');
+  }
+};
+
+// Async loader that tries IndexedDB if localStorage is empty
+const loadDataWithIDBFallback = async (syncData) => {
+  // If sync load got real data, just save to IDB as well
+  if (syncData && syncData.contacts && syncData.contacts.length > 0) {
+    idbSave(syncData);
+    return syncData;
+  }
+  // Try IDB fallback
+  console.log('[CRM] Attempting IndexedDB fallback...');
+  const idbData = await idbLoad();
+  if (idbData && idbData.contacts && idbData.contacts.length > 0) {
+    console.log('[CRM] Restored ' + idbData.contacts.length + ' contacts from IndexedDB');
+    const migrated = migrateData(idbData);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    return migrated;
+  }
+  return syncData;
+};
+
+// ─── ContactDetail Component ───
+const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence }) => {
+  const [form, setForm] = useState({...contact});
+  const [tagInput, setTagInput] = useState('');
+  const [noteInput, setNoteInput] = useState('');
+  const [noteType, setNoteType] = useState('General');
+  const stgs = stages || DEFAULT_STAGES;
+
+  const handleSave = () => {
+    const updated = {...form, tags: form.tags || []};
+    const formChanged = JSON.stringify(updated) !== JSON.stringify(contact);
+    if (formChanged) {
+      // Only recalculate follow-up if stage changed
+      const stageChanged = updated.stage !== contact.stage;
+      const userSetFollowUp = updated.nextFollowUp !== contact.nextFollowUp;
+      if (stageChanged && !userSetFollowUp) {
+        updated.nextFollowUp = calculateNextFollowUp(updated.stage, cadence);
+      }
+      // Never auto-set lastContactDate — only explicit user changes or addNote should update it
+    }
+    onUpdate(updated);
+    onClose();
+  };
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !(form.tags||[]).includes(t)) {
+      setForm({...form, tags: [...(form.tags||[]), t]});
+      setTagInput('');
+    }
+  };
+
+  const removeTag = (tag) => {
+    setForm({...form, tags: (form.tags||[]).filter(t => t !== tag)});
+  };
+
+  const addNote = () => {
+    const text = noteInput.trim();
+    if (!text) return;
+    const note = { id: Math.random().toString(36).substr(2, 9), text, type: noteType, date: new Date().toISOString() };
+    // Logging a note = real interaction, so update lastContactDate and recalculate follow-up
+    const newLastContact = today();
+    setForm({...form, notesTimeline: [note, ...(form.notesTimeline||[])], lastContactDate: newLastContact, nextFollowUp: calculateNextFollowUp(form.stage, cadence, newLastContact)});
+    setNoteInput('');
+  };
+
+  const removeNote = (id) => {
+    setForm({...form, notesTimeline: (form.notesTimeline||[]).filter(n => n.id !== id)});
+  };
+
+  const handleFieldChange = (field, value) => {
+    setForm(prev => ({...prev, [field]: value}));
+  };
+
+  const renderField = (label, field, type, options) => (
+    <div className="mb-3" key={field}>
+      <label className="block text-sm font-medium text-gray-600 mb-1">{label}</label>
+      {type === 'select' ? (
+        <select value={form[field]||''} onChange={e => handleFieldChange(field, e.target.value)} className="w-full">
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : type === 'textarea' ? (
+        <textarea value={form[field]||''} onChange={e => handleFieldChange(field, e.target.value)} className="w-full" rows={3} />
+      ) : (
+        <input type={type||'text'} value={form[field]||''} onChange={e => handleFieldChange(field, type==='number' ? Number(e.target.value) : e.target.value)} className="w-full" />
+      )}
+    </div>
+  );
+
+  return (
+    <div className="detail-panel detail-panel-enter flex flex-col h-full">
+      {/* Sticky header */}
+      <div className="flex justify-between items-center p-4 pb-3 border-b flex-shrink-0">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-bold truncate">{contact.name}</h2>
+          {contact.company && <div className="text-xs text-gray-500">{contact.company}</div>}
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl ml-2 flex-shrink-0">{'\u00D7'}</button>
+      </div>
+
+      {/* Quick contact actions */}
+      <div className="flex gap-2 p-4 pb-2 border-b flex-shrink-0">
+        {form.email && <a href={'mailto:' + form.email} className="flex-1 text-center py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100">{'\u2709'} Email</a>}
+        {form.phone && <a href={'tel:' + form.phone} className="flex-1 text-center py-1.5 bg-green-50 text-green-600 rounded-lg text-xs font-medium hover:bg-green-100">{'\uD83D\uDCDE'} Call</a>}
+        <button onClick={() => { document.getElementById('note-input-panel') && document.getElementById('note-input-panel').focus(); }} className="flex-1 text-center py-1.5 bg-purple-50 text-purple-600 rounded-lg text-xs font-medium hover:bg-purple-100">{'\uD83D\uDCDD'} Note</button>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="overflow-y-auto flex-1 p-4 pt-3" style={{overflowY: 'scroll'}}>
+        {/* Activity Timeline first — this is the CRM centerpiece */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">Activity Timeline</label>
+          <div className="flex gap-2 mb-2">
+            <input id="note-input-panel" value={noteInput} onChange={e => setNoteInput(e.target.value)} onKeyDown={e => e.key==='Enter' && (e.preventDefault(), addNote())} placeholder="Log an interaction..." className="flex-1 text-sm" />
+            <select value={noteType} onChange={e => setNoteType(e.target.value)} className="w-24 text-sm">
+              <option>General</option><option>Call</option><option>Email</option><option>Meeting</option>
+            </select>
+            <button onClick={addNote} className="px-3 py-1 bg-green-500 text-white rounded text-sm font-medium">Log</button>
+          </div>
+          <div className="space-y-2 max-h-52 overflow-y-auto">
+            {(form.notesTimeline||[]).length === 0 && <div className="text-xs text-gray-400 text-center py-3">No activity logged yet</div>}
+            {(form.notesTimeline||[]).map(n => (
+              <div key={n.id} className="bg-gray-50 rounded p-2 text-sm flex justify-between items-start">
+                <div>
+                  <span className={"text-xs font-medium mr-2 " + (n.type==='Call' ? 'text-green-600' : n.type==='Email' ? 'text-blue-600' : n.type==='Meeting' ? 'text-purple-600' : 'text-gray-600')}>{n.type}</span>
+                  <span className="text-gray-700">{n.text}</span>
+                  <div className="text-xs text-gray-400 mt-1">{formatDate(n.date)}</div>
+                </div>
+                <button onClick={() => removeNote(n.id)} className="text-red-400 hover:text-red-600 ml-2 flex-shrink-0">{'\u00D7'}</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <hr className="my-3 border-gray-100" />
+
+        {/* Contact details */}
+        <details open className="mb-3">
+          <summary className="text-sm font-semibold text-gray-700 cursor-pointer mb-2">Contact Details</summary>
+          {renderField("Name", "name")}
+          {renderField("Company", "company")}
+          {renderField("Email", "email", "email")}
+          {renderField("Phone", "phone")}
+          {renderField("Source", "source", "select", ['Direct','Referral','Network','LinkedIn','Website','Event','Other'])}
+        </details>
+
+        <details open className="mb-3">
+          <summary className="text-sm font-semibold text-gray-700 cursor-pointer mb-2">Deal & Stage</summary>
+          {renderField("Stage", "stage", "select", stgs)}
+          {renderField("Deal Value ($)", "dealValue", "number")}
+          {renderField("Monthly Revenue ($)", "monthlyRevenue", "number")}
+          {renderField("Priority", "priority", "select", ['high','medium','low'])}
+          {renderField("Last Contacted", "lastContactDate", "date")}
+          {renderField("Next Follow-Up", "nextFollowUp", "date")}
+        </details>
+
+        <details className="mb-3">
+          <summary className="text-sm font-semibold text-gray-700 cursor-pointer mb-2">Notes</summary>
+          {renderField("Notes", "notes", "textarea")}
+        </details>
+
+        {/* Tags */}
+        <details className="mb-3">
+          <summary className="text-sm font-semibold text-gray-700 cursor-pointer mb-2">Tags ({(form.tags||[]).length})</summary>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {(form.tags||[]).map(tag => (
+              <span key={tag} className="tag">
+                {tag}
+                <button onClick={() => removeTag(tag)} className="ml-1 hover:text-red-500">{'\u00D7'}</button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => e.key==='Enter' && (e.preventDefault(), addTag())} placeholder="Add tag..." className="flex-1 text-sm" />
+            <button onClick={addTag} className="px-3 py-1 bg-indigo-500 text-white rounded text-sm">Add</button>
+          </div>
+        </details>
+      </div>
+
+      {/* Sticky footer */}
+      <div className="flex gap-2 p-4 pt-3 border-t flex-shrink-0">
+        <button onClick={handleSave} className="flex-1 py-2 text-white rounded-lg font-medium text-sm hover:opacity-90" style={{background: 'var(--accent)'}}>Save</button>
+        <button onClick={() => { if(confirm('Delete this contact?')) { onDelete(contact.id); onClose(); }}} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 text-sm">Delete</button>
+        <button onClick={onClose} className="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">Cancel</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── TodayView (Morning Briefing) ───
+const TodayView = ({ contacts, stages, onSelectContact, onUpdateContact, cadence }) => {
+  const t = today();
+  const stgs = stages || DEFAULT_STAGES;
+  const overdue = contacts.filter(c => c.nextFollowUp && c.nextFollowUp < t).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  const dueToday = contacts.filter(c => c.nextFollowUp === t);
+  const inDays = (d) => { const dt = new Date(t); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; };
+  const dueTomorrow = contacts.filter(c => c.nextFollowUp === inDays(1));
+  const recentNotes = contacts.flatMap(c => (c.notesTimeline||[]).map(n => ({...n, contactName: c.name, contactId: c.id, contact: c}))).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 8);
+  const topDeals = contacts.filter(c => c.dealValue > 0).sort((a,b) => b.dealValue - a.dealValue).slice(0, 5);
+  const weekAgo = (() => { const d = new Date(t); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })();
+  const contactedThisWeek = contacts.filter(c => c.lastContactDate && c.lastContactDate >= weekAgo).length;
+  const totalContacts = contacts.length;
+
+  // Bulk actions
+  const bulkMarkContacted = (list) => {
+    list.forEach(c => onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)}));
+  };
+  const bulkSnooze = (list, days) => {
+    const d = new Date(); d.setDate(d.getDate() + days);
+    const newDate = d.toISOString().split('T')[0];
+    list.forEach(c => onUpdateContact({...c, nextFollowUp: newDate}));
+  };
+  const quickMark = (c) => { onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)}); };
+  const quickSnooze = (c, days) => { const d = new Date(); d.setDate(d.getDate() + days); onUpdateContact({...c, nextFollowUp: d.toISOString().split('T')[0]}); };
+
+  // Bulk action bar for a section
+  const BulkBar = ({items, color}) => (
+    <div className="flex flex-wrap items-center gap-2 mb-2 p-2 rounded-lg" style={{background: color + '10', border: '1px solid ' + color + '30'}}>
+      <span className="text-xs font-medium" style={{color}}>All {items.length}:</span>
+      <button onClick={() => bulkMarkContacted(items)} className="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-medium hover:bg-green-600 active:bg-green-700">Mark All Contacted</button>
+      <button onClick={() => bulkSnooze(items, 1)} className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium hover:bg-blue-600 active:bg-blue-700">Snooze All +1d</button>
+      <button onClick={() => bulkSnooze(items, 3)} className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium hover:bg-blue-600 active:bg-blue-700">Snooze All +3d</button>
+      <button onClick={() => bulkSnooze(items, 7)} className="px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-medium hover:bg-indigo-600 active:bg-indigo-700">Snooze All +1w</button>
+    </div>
+  );
+
+  const ActionCard = ({c, borderColor}) => {
+    const fu = getFollowUpStatus(c.nextFollowUp);
+    return (
+      <div className="bg-white rounded-lg p-3 border flex items-center gap-2 cursor-pointer hover:bg-gray-50 hover:border-blue-300 active:bg-gray-100 transition-colors" style={{borderLeft: '4px solid ' + (borderColor || getStageColor(c.stage))}} onClick={() => onSelectContact(c)}>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm truncate">{c.name}</div>
+          <div className="text-xs text-gray-500 truncate">{c.stage}{c.company ? ' \u00B7 ' + c.company : ''}{c.dealValue ? ' \u00B7 $' + c.dealValue.toLocaleString() : ''}</div>
+        </div>
+        <div className={"text-xs flex-shrink-0 mr-1 " + fu.cls}>{fu.label}</div>
+        <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <button onClick={() => quickMark(c)} className="px-2.5 py-1.5 bg-green-50 text-green-600 rounded-lg text-xs font-medium hover:bg-green-100 active:bg-green-200" title="Mark contacted">{'\u2714'}</button>
+          <button onClick={() => quickSnooze(c, 1)} className="px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 active:bg-blue-200" title="Snooze 1 day">+1d</button>
+          <button onClick={() => quickSnooze(c, 3)} className="px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 active:bg-blue-200" title="Snooze 3 days">+3d</button>
+          <button onClick={() => quickSnooze(c, 7)} className="px-2 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-100 active:bg-indigo-200" title="Snooze 1 week">+7d</button>
+        </div>
+      </div>
+    );
+  };
+
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">{greeting}</h1>
+        <p className="text-gray-500 text-sm">{dateStr} &mdash; {contactedThisWeek} of {totalContacts} contacts reached this week</p>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Overdue</div><div className="text-3xl font-bold text-red-600">{overdue.length}</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Due Today</div><div className="text-3xl font-bold text-orange-500">{dueToday.length}</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Tomorrow</div><div className="text-3xl font-bold text-blue-600">{dueTomorrow.length}</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Reached This Week</div><div className="text-3xl font-bold text-green-600">{contactedThisWeek}</div></div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left column: Action items */}
+        <div>
+          {overdue.length > 0 && (
+            <div className="mb-5">
+              <h2 className="text-base font-semibold text-red-600 mb-2">{'\uD83D\uDD34'} Overdue ({overdue.length})</h2>
+              <BulkBar items={overdue} color="#ef4444" />
+              <div className="space-y-1.5">{overdue.map(c => <ActionCard key={c.id} c={c} borderColor="#ef4444" />)}</div>
+            </div>
+          )}
+          {dueToday.length > 0 && (
+            <div className="mb-5">
+              <h2 className="text-base font-semibold text-orange-600 mb-2">{'\u26A0\uFE0F'} Due Today ({dueToday.length})</h2>
+              <BulkBar items={dueToday} color="#f59e0b" />
+              <div className="space-y-1.5">{dueToday.map(c => <ActionCard key={c.id} c={c} borderColor="#f59e0b" />)}</div>
+            </div>
+          )}
+          {dueTomorrow.length > 0 && (
+            <div className="mb-5">
+              <h2 className="text-base font-semibold text-blue-600 mb-2">{'\uD83D\uDD35'} Tomorrow ({dueTomorrow.length})</h2>
+              <BulkBar items={dueTomorrow} color="#3b82f6" />
+              <div className="space-y-1.5">{dueTomorrow.map(c => <ActionCard key={c.id} c={c} borderColor="#3b82f6" />)}</div>
+            </div>
+          )}
+          {overdue.length === 0 && dueToday.length === 0 && dueTomorrow.length === 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+              <div className="text-green-600 font-semibold">All caught up!</div>
+              <div className="text-sm text-green-500 mt-1">No urgent follow-ups right now.</div>
+            </div>
+          )}
+        </div>
+
+        {/* Right column: Context */}
+        <div>
+          {topDeals.length > 0 && (
+            <div className="mb-5">
+              <h2 className="text-base font-semibold text-gray-700 mb-2">{'\uD83D\uDCB0'} Top Deals</h2>
+              <div className="space-y-1.5">{topDeals.map(c => (
+                <div key={c.id} className="bg-white rounded-lg p-3 border flex items-center justify-between cursor-pointer hover:bg-gray-50" onClick={() => onSelectContact(c)}>
+                  <div><div className="font-medium text-sm">{c.name}</div><div className="text-xs text-gray-500">{c.stage}</div></div>
+                  <div className="text-sm font-bold text-green-600">${c.dealValue.toLocaleString()}</div>
+                </div>
+              ))}</div>
+            </div>
+          )}
+          {recentNotes.length > 0 && (
+            <div className="mb-5">
+              <h2 className="text-base font-semibold text-gray-700 mb-2">{'\uD83D\uDCDD'} Recent Activity</h2>
+              <div className="space-y-1.5">{recentNotes.map(n => (
+                <div key={n.id} className="bg-white rounded-lg p-3 border cursor-pointer hover:bg-gray-50" onClick={() => onSelectContact(n.contact)}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={"text-xs font-medium " + (n.type==='Call' ? 'text-green-600' : n.type==='Email' ? 'text-blue-600' : n.type==='Meeting' ? 'text-purple-600' : 'text-gray-500')}>{n.type}</span>
+                    <span className="text-xs font-medium text-gray-700">{n.contactName}</span>
+                    <span className="text-xs text-gray-400 ml-auto">{formatDate(n.date)}</span>
+                  </div>
+                  <div className="text-sm text-gray-600 truncate">{n.text}</div>
+                </div>
+              ))}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── DashboardView ───
+const DashboardView = ({ contacts, stages }) => {
+  const stgs = stages || DEFAULT_STAGES;
+  const totalContacts = contacts.length;
+  const totalDealValue = contacts.reduce((s, c) => s + (c.dealValue || 0), 0);
+  const weightedValue = contacts.reduce((s, c) => s + (c.dealValue || 0) * getStageProbability(c.stage), 0);
+  const overdue = contacts.filter(c => c.nextFollowUp && c.nextFollowUp < today()).length;
+  const dueToday = contacts.filter(c => c.nextFollowUp === today()).length;
+
+  // Funnel data: stages with contacts, sorted by count descending for funnel shape
+  const funnelData = stgs.map(stage => {
+    const stageContacts = contacts.filter(c => c.stage === stage);
+    const count = stageContacts.length;
+    const value = stageContacts.reduce((s, c) => s + (c.dealValue || 0), 0);
+    const weighted = stageContacts.reduce((s, c) => s + (c.dealValue || 0) * getStageProbability(c.stage), 0);
+    const prob = getStageProbability(stage);
+    return { stage, count, value, weighted, prob, color: getStageColor(stage) };
+  }).filter(d => d.count > 0);
+  const maxCount = Math.max(...funnelData.map(d => d.count), 1);
+
+  // Avg days in stage
+  const stageVelocity = stgs.map(stage => {
+    const sc = contacts.filter(c => c.stage === stage && c.stageChangedAt);
+    if (sc.length === 0) return null;
+    const avgDays = sc.reduce((s, c) => s + daysBetween(c.stageChangedAt.split('T')[0], today()), 0) / sc.length;
+    return { stage, avgDays: Math.round(avgDays), count: sc.length, color: getStageColor(stage) };
+  }).filter(Boolean);
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Total Contacts</div><div className="text-3xl font-bold text-blue-600">{totalContacts}</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Pipeline Value</div><div className="text-3xl font-bold text-green-600">${totalDealValue.toLocaleString()}</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Weighted Value</div><div className="text-3xl font-bold text-emerald-600">${Math.round(weightedValue).toLocaleString()}</div><div className="text-xs text-gray-400 mt-1">probability-adjusted</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Overdue</div><div className="text-3xl font-bold text-red-600">{overdue}</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Due Today</div><div className="text-3xl font-bold text-orange-500">{dueToday}</div></div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Pipeline Funnel */}
+        <div className="bg-white rounded-xl border p-4">
+          <h2 className="text-lg font-semibold mb-4">Pipeline Funnel</h2>
+          {funnelData.length === 0 ? <div className="text-center text-gray-400 py-8">No contacts in pipeline</div> : (
+            <div className="space-y-2">
+              {funnelData.map((d, i) => {
+                const widthPct = Math.max(8, (d.count / maxCount) * 100);
+                return (
+                  <div key={d.stage} className="flex items-center gap-3">
+                    <div className="funnel-label w-32 text-right flex-shrink-0">
+                      <div className="text-xs font-medium text-gray-700 truncate">{d.stage}</div>
+                      <div className="text-xs text-gray-400">{Math.round(d.prob * 100)}% prob</div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="funnel-bar h-8 rounded-r-lg flex items-center px-3" style={{width: widthPct + '%', background: d.color, opacity: 0.85}}>
+                        <span className="text-white text-xs font-bold">{d.count}</span>
+                      </div>
+                    </div>
+                    <div className="funnel-value w-24 text-right flex-shrink-0">
+                      {d.value > 0 && <div className="text-xs font-medium text-green-600">${d.value.toLocaleString()}</div>}
+                      {d.weighted > 0 && <div className="text-xs text-gray-400">${Math.round(d.weighted).toLocaleString()} wtd</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Stage Velocity */}
+        <div className="bg-white rounded-xl border p-4">
+          <h2 className="text-lg font-semibold mb-4">Avg. Time in Stage</h2>
+          {stageVelocity.length === 0 ? <div className="text-center text-gray-400 py-8">No stage data yet</div> : (
+            <div className="space-y-2">
+              {stageVelocity.map(d => {
+                const maxDays = Math.max(...stageVelocity.map(v => v.avgDays), 1);
+                const widthPct = Math.max(8, (d.avgDays / maxDays) * 100);
+                return (
+                  <div key={d.stage} className="flex items-center gap-3">
+                    <div className="w-32 text-right flex-shrink-0">
+                      <div className="text-xs font-medium text-gray-700 truncate">{d.stage}</div>
+                      <div className="text-xs text-gray-400">{d.count} contacts</div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="funnel-bar h-7 rounded-r-lg flex items-center px-3" style={{width: widthPct + '%', background: d.color, opacity: 0.7}}>
+                        <span className="text-white text-xs font-bold">{d.avgDays}d</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <h2 className="text-lg font-semibold mb-3">Stage Breakdown</h2>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {stgs.map(stage => {
+          const stageContacts = contacts.filter(c => c.stage === stage);
+          const count = stageContacts.length;
+          const value = stageContacts.reduce((s, c) => s + (c.dealValue || 0), 0);
+          const color = getStageColor(stage);
+          return (
+            <div key={stage} className="bg-white rounded-lg p-3 border" style={{borderLeft: '4px solid ' + color}}>
+              <div className="text-sm font-medium truncate">{stage}</div>
+              <div className="text-2xl font-bold" style={{color}}>{count}</div>
+              {value > 0 && <div className="text-xs text-green-600 mt-1">${value.toLocaleString()}</div>}
+              <div className="text-xs text-gray-400">{Math.round(getStageProbability(stage) * 100)}% close rate</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ─── ContactsView ───
+const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteContact, stages, cadence }) => {
+  const [search, setSearch] = useState('');
+  const [stageFilter, setStageFilter] = useState('All');
+  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [tagFilter, setTagFilter] = useState('All');
+  const [sortBy, setSortBy] = useState('name');
+  const [selected, setSelected] = useState(new Set());
+  const [showBulkNote, setShowBulkNote] = useState(false);
+  const [bulkNoteText, setBulkNoteText] = useState('');
+  const [bulkNoteType, setBulkNoteType] = useState('General');
+  const stgs = stages || DEFAULT_STAGES;
+
+  const allTags = useMemo(() => {
+    const tags = new Set();
+    contacts.forEach(c => (c.tags || []).forEach(t => tags.add(t)));
+    return [...tags].sort();
+  }, [contacts]);
+
+  const filtered = useMemo(() => {
+    let list = contacts;
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        (c.company||'').toLowerCase().includes(q) ||
+        (c.email||'').toLowerCase().includes(q) ||
+        (c.tags||[]).some(t => t.toLowerCase().includes(q)) ||
+        (c.notes||'').toLowerCase().includes(q) ||
+        (c.notesTimeline||[]).some(n => n.text.toLowerCase().includes(q))
+      );
+    }
+    if (stageFilter !== 'All') list = list.filter(c => c.stage === stageFilter);
+    if (priorityFilter !== 'All') list = list.filter(c => c.priority === priorityFilter);
+    if (tagFilter !== 'All') list = list.filter(c => (c.tags||[]).includes(tagFilter));
+    list = [...list].sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'stage') return (stgs.indexOf(a.stage) - stgs.indexOf(b.stage)) || a.name.localeCompare(b.name);
+      if (sortBy === 'lastContacted') return (b.lastContactDate||'').localeCompare(a.lastContactDate||'');
+      if (sortBy === 'dealValue') return (b.dealValue||0) - (a.dealValue||0);
+      if (sortBy === 'priority') { const ord = {high:0,medium:1,low:2}; return (ord[a.priority]||1) - (ord[b.priority]||1) || a.name.localeCompare(b.name); }
+      return 0;
+    });
+    return list;
+  }, [contacts, search, stageFilter, priorityFilter, tagFilter, sortBy, stgs]);
+
+  const toggleSelect = (id) => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
+
+  const handleBulkMove = (stage) => {
+    selected.forEach(id => {
+      const c = contacts.find(x => x.id === id);
+      if (c) onUpdateContact({...c, stage, nextFollowUp: calculateNextFollowUp(stage, cadence), stageChangedAt: new Date().toISOString()});
+    });
+    setSelected(new Set());
+  };
+
+  const handleBulkMarkContacted = () => {
+    selected.forEach(id => {
+      const c = contacts.find(x => x.id === id);
+      if (c) onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)});
+    });
+    setSelected(new Set());
+  };
+
+  const handleBulkAddNote = () => {
+    const text = bulkNoteText.trim();
+    if (!text) return;
+    const note = { id: Math.random().toString(36).substr(2, 9), text, type: bulkNoteType, date: new Date().toISOString() };
+    selected.forEach(id => {
+      const c = contacts.find(x => x.id === id);
+      if (c) {
+        onUpdateContact({
+          ...c,
+          notesTimeline: [note, ...(c.notesTimeline || [])],
+          lastContactDate: today(),
+          nextFollowUp: calculateNextFollowUp(c.stage, cadence)
+        });
+      }
+    });
+    setBulkNoteText('');
+    setBulkNoteType('General');
+    setShowBulkNote(false);
+    setSelected(new Set());
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4"><h1 className="text-2xl font-bold">Contacts ({filtered.length})</h1></div>
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, company, email, tags, notes..." className="flex-1 min-w-[200px]" />
+        <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}><option value="All">All Stages</option>{stgs.map(s => <option key={s} value={s}>{s}</option>)}</select>
+        <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}>
+          <option value="All">All Priorities</option>
+          <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+        </select>
+        {allTags.length > 0 && (
+          <select value={tagFilter} onChange={e => setTagFilter(e.target.value)}>
+            <option value="All">All Tags</option>{allTags.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option value="name">Sort by Name</option><option value="stage">Sort by Stage</option>
+          <option value="lastContacted">Sort by Last Contacted</option><option value="dealValue">Sort by Deal Value</option>
+          <option value="priority">Sort by Priority</option>
+        </select>
+      </div>
+      {(stageFilter !== 'All' || priorityFilter !== 'All' || tagFilter !== 'All') && (
+        <div className="flex items-center gap-2 mb-3 text-sm">
+          <span className="text-gray-500">Active filters:</span>
+          {stageFilter !== 'All' && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">{stageFilter}<button onClick={() => setStageFilter('All')} className="hover:text-red-500">{'\u00D7'}</button></span>}
+          {priorityFilter !== 'All' && <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">{priorityFilter}<button onClick={() => setPriorityFilter('All')} className="hover:text-red-500">{'\u00D7'}</button></span>}
+          {tagFilter !== 'All' && <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">{tagFilter}<button onClick={() => setTagFilter('All')} className="hover:text-red-500">{'\u00D7'}</button></span>}
+          <button onClick={() => { setStageFilter('All'); setPriorityFilter('All'); setTagFilter('All'); }} className="text-xs text-gray-400 hover:text-red-500 ml-1">Clear all</button>
+        </div>
+      )}
+      {selected.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-center gap-3 flex-wrap">
+          <span className="font-medium text-blue-800">{selected.size} selected</span>
+          <select onChange={e => { if(e.target.value) handleBulkMove(e.target.value); e.target.value=''; }} defaultValue="">
+            <option value="">Move to...</option>{stgs.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button onClick={handleBulkMarkContacted} className="px-3 py-1 bg-green-500 text-white rounded text-sm">Mark Contacted</button>
+          <button onClick={() => setShowBulkNote(true)} className="px-3 py-1 bg-purple-500 text-white rounded text-sm">Add Note to All</button>
+          <button onClick={() => setSelected(new Set())} className="px-3 py-1 bg-gray-200 rounded text-sm">Clear</button>
+        </div>
+      )}
+      {showBulkNote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:'rgba(0,0,0,0.4)',backdropFilter:'blur(4px)'}} onClick={() => setShowBulkNote(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Add Note to {selected.size} Contacts</h2>
+              <button onClick={() => setShowBulkNote(false)} className="text-gray-400 hover:text-gray-600 text-2xl">{'\u00D7'}</button>
+            </div>
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-600 mb-1">Note Type</label>
+              <select value={bulkNoteType} onChange={e => setBulkNoteType(e.target.value)} className="w-full">
+                <option>General</option><option>Call</option><option>Email</option><option>Meeting</option>
+              </select>
+            </div>
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-600 mb-1">Note</label>
+              <textarea value={bulkNoteText} onChange={e => setBulkNoteText(e.target.value)} className="w-full" rows={4} placeholder="Type your note here... This will be added to all selected contacts." />
+            </div>
+            <div className="mb-4 bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
+              <div className="text-xs font-medium text-gray-500 mb-1">Will be added to:</div>
+              <div className="flex flex-wrap gap-1">{Array.from(selected).map(id => {
+                const c = contacts.find(x => x.id === id);
+                return c ? <span key={id} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{c.name}</span> : null;
+              })}</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleBulkAddNote} className="flex-1 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700">Add Note to All</button>
+              <button onClick={() => setShowBulkNote(false)} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Mobile card layout */}
+      <div className="contact-cards-mobile space-y-2">
+        {filtered.map(c => {
+          const fu = getFollowUpStatus(c.nextFollowUp);
+          const color = getStageColor(c.stage);
+          const quickMarkContacted = (e) => { e.stopPropagation(); onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)}); };
+          const quickSnooze = (e, days) => { e.stopPropagation(); const d = new Date(); d.setDate(d.getDate() + days); onUpdateContact({...c, nextFollowUp: d.toISOString().split('T')[0]}); };
+          return (
+            <div key={c.id} className="bg-white rounded-lg p-3 border cursor-pointer active:bg-gray-50" style={{borderLeft: '4px solid ' + color}} onClick={() => onSelectContact(c)}>
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{c.name}</div>
+                  <div className="text-xs text-gray-500 truncate">{c.company || c.stage}</div>
+                </div>
+                <span className={"badge ml-2 flex-shrink-0 " + (c.priority === 'high' ? 'bg-red-100 text-red-700' : c.priority === 'low' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700')}>{c.priority}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className={"text-xs " + fu.cls}>{fu.label}</div>
+                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  <button onClick={quickMarkContacted} className="px-2 py-1.5 bg-green-50 text-green-600 rounded text-xs active:bg-green-100">{'\u2714'}</button>
+                  <button onClick={e => quickSnooze(e, 1)} className="px-2 py-1.5 bg-blue-50 text-blue-600 rounded text-xs active:bg-blue-100">+1d</button>
+                  <button onClick={e => quickSnooze(e, 3)} className="px-2 py-1.5 bg-blue-50 text-blue-600 rounded text-xs active:bg-blue-100">+3d</button>
+                  <button onClick={e => quickSnooze(e, 7)} className="px-2 py-1.5 bg-blue-50 text-blue-600 rounded text-xs active:bg-blue-100">+7d</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Desktop table layout */}
+      <div className="contact-table bg-white rounded-xl border overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="p-3 text-left w-8"><input type="checkbox" onChange={e => setSelected(e.target.checked ? new Set(filtered.map(c=>c.id)) : new Set())} /></th>
+              <th className="p-3 text-left text-sm font-medium text-gray-600">Name</th>
+              <th className="p-3 text-left text-sm font-medium text-gray-600">Company</th>
+              <th className="p-3 text-left text-sm font-medium text-gray-600">Stage</th>
+              <th className="p-3 text-left text-sm font-medium text-gray-600">Follow-Up</th>
+              <th className="p-3 text-left text-sm font-medium text-gray-600">Priority</th>
+              <th className="p-3 text-left text-sm font-medium text-gray-600 w-36">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(c => {
+              const fu = getFollowUpStatus(c.nextFollowUp);
+              const color = getStageColor(c.stage);
+              const quickMarkContacted = (e) => {
+                e.stopPropagation();
+                onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)});
+              };
+              const quickSnooze = (e, days) => {
+                e.stopPropagation();
+                const d = new Date(); d.setDate(d.getDate() + days);
+                onUpdateContact({...c, nextFollowUp: d.toISOString().split('T')[0]});
+              };
+              return (
+                <tr key={c.id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => onSelectContact(c)}>
+                  <td className="p-3" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} /></td>
+                  <td className="p-3 font-medium">{c.name}</td>
+                  <td className="p-3 text-gray-600">{c.company || '\u2014'}</td>
+                  <td className="p-3"><span className="px-2 py-1 rounded-full text-xs font-medium text-white" style={{background: color}}>{c.stage}</span></td>
+                  <td className={"p-3 text-sm " + fu.cls}>{fu.label}</td>
+                  <td className="p-3"><span className={"badge " + (c.priority === 'high' ? 'bg-red-100 text-red-700' : c.priority === 'low' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700')}>{c.priority}</span></td>
+                  <td className="p-3" onClick={e => e.stopPropagation()}>
+                    <div className="quick-action flex items-center gap-1">
+                      <button onClick={quickMarkContacted} className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs hover:bg-green-100" title="Mark contacted">{'\u2714'}</button>
+                      <button onClick={e => quickSnooze(e, 1)} className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="Snooze 1 day">+1d</button>
+                      <button onClick={e => quickSnooze(e, 3)} className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="Snooze 3 days">+3d</button>
+                      <button onClick={e => quickSnooze(e, 7)} className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="Snooze 1 week">+7d</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ─── PipelineView (Kanban) ───
+const PipelineView = ({ contacts, onUpdateContact, onSelectContact, stages, cadence }) => {
+  const stgs = stages || DEFAULT_STAGES;
+  const [dragOver, setDragOver] = useState(null);
+
+  const handleDragStart = (e, contact) => { e.dataTransfer.setData('contactId', contact.id); };
+  const handleDrop = (e, stage) => {
+    e.preventDefault(); setDragOver(null);
+    const id = e.dataTransfer.getData('contactId');
+    const contact = contacts.find(c => c.id === id);
+    if (contact && contact.stage !== stage) {
+      onUpdateContact({...contact, stage, nextFollowUp: calculateNextFollowUp(stage, cadence), stageChangedAt: new Date().toISOString()});
+    }
+  };
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-4">Pipeline</h1>
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {stgs.map(stage => {
+          const sc = contacts.filter(c => c.stage === stage);
+          const color = getStageColor(stage);
+          return (
+            <div key={stage} className={"pipeline-col flex-shrink-0 bg-gray-50 rounded-xl p-3 " + (dragOver === stage ? 'drag-over' : '')}
+              onDragOver={e => { e.preventDefault(); setDragOver(stage); }} onDragLeave={() => setDragOver(null)} onDrop={e => handleDrop(e, stage)}>
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{borderColor: color}}>
+                <div className="w-3 h-3 rounded-full" style={{background: color}}></div>
+                <span className="font-semibold text-sm truncate">{stage}</span>
+                <span className="ml-auto bg-gray-200 text-gray-700 text-xs font-bold px-2 py-0.5 rounded-full">{sc.length}</span>
+              </div>
+              {sc.map(c => {
+                const fu = getFollowUpStatus(c.nextFollowUp);
+                return (
+                  <div key={c.id} className={"card-drag bg-white rounded-lg p-3 mb-2 shadow-sm cursor-pointer hover:border-blue-400 border " + (fu.cls.includes('red') ? 'border-l-4 border-l-red-400' : fu.cls.includes('orange') ? 'border-l-4 border-l-orange-400' : '')} draggable onDragStart={e => handleDragStart(e, c)} onClick={() => onSelectContact && onSelectContact(c)}>
+                    <div className="font-medium text-sm">{c.name}</div>
+                    {c.company && <div className="text-xs text-gray-500">{c.company}</div>}
+                    <div className="flex items-center justify-between mt-1.5">
+                      <div className={"text-xs font-medium " + fu.cls}>{fu.label}</div>
+                      {c.nextFollowUp && <div className="text-xs text-gray-400">{formatDate(c.nextFollowUp)}</div>}
+                    </div>
+                    {(c.tags||[]).length > 0 && <div className="flex flex-wrap gap-1 mt-1.5">{c.tags.slice(0,3).map(t => <span key={t} className="text-xs bg-indigo-50 text-indigo-600 px-1 rounded">{t}</span>)}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ─── DealsView ───
+const DealsView = ({ contacts, stages }) => {
+  const deals = contacts.filter(c => c.dealValue > 0).sort((a, b) => b.dealValue - a.dealValue);
+  const totalValue = deals.reduce((s, c) => s + c.dealValue, 0);
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-4">Deals</h1>
+      <div className="stat-card rounded-xl p-4 mb-6">
+        <div className="text-sm text-gray-500">Total Pipeline Value</div>
+        <div className="text-3xl font-bold text-green-600">${totalValue.toLocaleString()}</div>
+        <div className="text-sm text-gray-500 mt-1">{deals.length} active deals</div>
+      </div>
+      {deals.length === 0 ? <div className="text-center text-gray-400 py-12">No deals with values yet. Edit contacts to add deal values.</div>
+      : <div className="space-y-3">{deals.map(c => (
+        <div key={c.id} className="bg-white rounded-lg p-4 border flex justify-between items-center">
+          <div><div className="font-semibold">{c.name}</div><div className="text-sm text-gray-500">{c.stage}</div></div>
+          <div className="text-xl font-bold text-green-600">${c.dealValue.toLocaleString()}</div>
+        </div>
+      ))}</div>}
+    </div>
+  );
+};
+
+// ─── FollowUpsView ───
+const FollowUpsView = ({ contacts, stages, onSelectContact, onUpdateContact, cadence }) => {
+  const [stageFilter, setStageFilter] = useState('all');
+  const stgs = stages || DEFAULT_STAGES;
+  const filtered = stageFilter === 'all' ? contacts : contacts.filter(c => c.stage === stageFilter);
+
+  const t = today();
+  const inDays = (d) => { const dt = new Date(t); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; };
+  const endOfWeek = (() => { const d = new Date(t); d.setDate(d.getDate() + (7 - d.getDay())); return d.toISOString().split('T')[0]; })();
+  const endOfNextWeek = (() => { const d = new Date(t); d.setDate(d.getDate() + (14 - d.getDay())); return d.toISOString().split('T')[0]; })();
+
+  const criticalOverdue = filtered.filter(c => c.nextFollowUp && daysBetween(c.nextFollowUp, t) > 7).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  const overdue = filtered.filter(c => c.nextFollowUp && c.nextFollowUp < t && daysBetween(c.nextFollowUp, t) <= 7).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  const dueToday = filtered.filter(c => c.nextFollowUp === t);
+  const tomorrow = filtered.filter(c => c.nextFollowUp === inDays(1));
+  const thisWeek = filtered.filter(c => c.nextFollowUp > inDays(1) && c.nextFollowUp <= endOfWeek).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  const nextWeek = filtered.filter(c => c.nextFollowUp > endOfWeek && c.nextFollowUp <= endOfNextWeek).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  const later = filtered.filter(c => c.nextFollowUp > endOfNextWeek).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  const noDate = filtered.filter(c => !c.nextFollowUp);
+
+  const totalOverdue = criticalOverdue.length + overdue.length;
+  const totalActions = totalOverdue + dueToday.length + tomorrow.length;
+
+  const Section = ({title, items, color, borderColor, icon, collapsed}) => {
+    const [open, setOpen] = useState(!collapsed);
+    if (items.length === 0) return null;
+    return (
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-2 cursor-pointer select-none" onClick={() => setOpen(!open)}>
+          <span>{open ? '\u25BC' : '\u25B6'}</span>
+          <span className="text-xs">{icon}</span>
+          <h2 className="text-base font-semibold" style={{color}}>{title}</h2>
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{background: borderColor || color, color: 'white'}}>{items.length}</span>
+        </div>
+        {open && (
+          <div className="space-y-1.5 ml-6">{items.map(c => {
+            const diff = c.nextFollowUp ? daysBetween(c.nextFollowUp, t) : null;
+            const alertText = diff === null ? 'No date' : diff > 0 ? diff + 'd overdue' : diff === 0 ? 'Today' : Math.abs(diff) === 1 ? 'Tomorrow' : 'In ' + Math.abs(diff) + 'd';
+            const alertCls = diff === null ? 'text-gray-400' : diff > 7 ? 'text-red-700 font-bold' : diff > 0 ? 'text-red-500 font-semibold' : diff === 0 ? 'text-orange-500 font-semibold' : 'text-green-600';
+            const quickMark = (e) => { e.stopPropagation(); onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)}); };
+            const quickSnooze = (e, days) => { e.stopPropagation(); const d = new Date(); d.setDate(d.getDate() + days); onUpdateContact({...c, nextFollowUp: d.toISOString().split('T')[0]}); };
+            return (
+              <div key={c.id} className="bg-white rounded-lg p-3 border flex items-center justify-between cursor-pointer hover:bg-gray-50 hover:border-blue-300 transition-colors" style={{borderLeft: '4px solid ' + (borderColor || color)}} onClick={() => onSelectContact(c)}>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{c.name}</div>
+                  <div className="text-xs text-gray-500 truncate">{c.stage}{c.company ? ' \u00B7 ' + c.company : ''}</div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-3" onClick={e => e.stopPropagation()}>
+                  <div className="quick-action flex items-center gap-1">
+                    <button onClick={quickMark} className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs hover:bg-green-100" title="Mark contacted">{'\u2714'}</button>
+                    <button onClick={e => quickSnooze(e, 1)} className="px-1.5 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="Snooze 1 day">+1d</button>
+                    <button onClick={e => quickSnooze(e, 3)} className="px-1.5 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="Snooze 3 days">+3d</button>
+                    <button onClick={e => quickSnooze(e, 7)} className="px-1.5 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="Snooze 1 week">+7d</button>
+                  </div>
+                  <div className="text-right">
+                    <div className={"text-xs " + alertCls}>{alertText}</div>
+                    {c.nextFollowUp && <div className="text-xs text-gray-400">{formatDate(c.nextFollowUp)}</div>}
+                    {c.lastContactDate && <div className="text-xs text-gray-300">Last: {formatDate(c.lastContactDate)}</div>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}</div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">Follow-Ups</h1>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-500">Stage:</label>
+          <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="text-sm py-1 px-2">
+            <option value="all">All Stages ({contacts.length})</option>
+            {stgs.map(s => { const cnt = contacts.filter(c => c.stage === s).length; return <option key={s} value={s}>{s} ({cnt})</option>; })}
+          </select>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="rounded-lg px-3 py-2 bg-red-50 border border-red-200"><div className="text-xs text-red-500">Overdue</div><div className="text-xl font-bold text-red-600">{totalOverdue}</div></div>
+        <div className="rounded-lg px-3 py-2 bg-orange-50 border border-orange-200"><div className="text-xs text-orange-500">Today</div><div className="text-xl font-bold text-orange-600">{dueToday.length}</div></div>
+        <div className="rounded-lg px-3 py-2 bg-blue-50 border border-blue-200"><div className="text-xs text-blue-500">Tomorrow</div><div className="text-xl font-bold text-blue-600">{tomorrow.length}</div></div>
+        <div className="rounded-lg px-3 py-2 bg-green-50 border border-green-200"><div className="text-xs text-green-500">This Week</div><div className="text-xl font-bold text-green-600">{thisWeek.length}</div></div>
+        <div className="rounded-lg px-3 py-2 bg-gray-50 border border-gray-200"><div className="text-xs text-gray-500">Action Needed</div><div className="text-xl font-bold text-gray-700">{totalActions}</div></div>
+      </div>
+      <Section title="Critical Overdue (7+ days)" items={criticalOverdue} color="#991b1b" borderColor="#dc2626" icon={'\uD83D\uDD34'} />
+      <Section title="Overdue" items={overdue} color="#dc2626" borderColor="#f87171" icon={'\uD83D\uDFE0'} />
+      <Section title="Due Today" items={dueToday} color="#d97706" borderColor="#f59e0b" icon={'\u26A0\uFE0F'} />
+      <Section title="Tomorrow" items={tomorrow} color="#2563eb" borderColor="#3b82f6" icon={'\uD83D\uDD35'} />
+      <Section title="This Week" items={thisWeek} color="#059669" borderColor="#10b981" icon={'\uD83D\uDFE2'} />
+      <Section title="Next Week" items={nextWeek} color="#6366f1" borderColor="#818cf8" icon={'\uD83D\uDFE3'} collapsed />
+      <Section title="Later" items={later} color="#6b7280" borderColor="#9ca3af" icon={'\u23F0'} collapsed />
+      <Section title="No Follow-Up Date" items={noDate} color="#9ca3af" borderColor="#d1d5db" icon={'\u2753'} collapsed />
+    </div>
+  );
+};
+
+// ─── WeeklyDigestView ───
+const WeeklyDigestView = ({ contacts, stages }) => {
+  const stgs = stages || DEFAULT_STAGES;
+  const sd = new Date(); sd.setDate(sd.getDate() - 7);
+  const sdStr = sd.toISOString().split('T')[0];
+  const recentlyContacted = contacts.filter(c => c.lastContactDate && c.lastContactDate >= sdStr);
+  const overdue = contacts.filter(c => c.nextFollowUp && c.nextFollowUp < today());
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-4">Weekly Digest</h1>
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Contacted This Week</div><div className="text-3xl font-bold text-blue-600">{recentlyContacted.length}</div></div>
+        <div className="stat-card rounded-xl p-4"><div className="text-sm text-gray-500">Overdue Follow-Ups</div><div className="text-3xl font-bold text-red-600">{overdue.length}</div></div>
+      </div>
+      <h2 className="text-lg font-semibold mb-3">Stage Summary</h2>
+      <div className="space-y-2">{stgs.map(stage => {
+        const count = contacts.filter(c => c.stage === stage).length;
+        const stageOverdue = contacts.filter(c => c.stage === stage && c.nextFollowUp && c.nextFollowUp < today()).length;
+        const color = getStageColor(stage);
+        return (
+          <div key={stage} className="bg-white rounded-lg p-3 border flex items-center gap-3">
+            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: color}}></div>
+            <div className="flex-1 font-medium truncate">{stage}</div>
+            <div className="text-sm text-gray-600">{count} contacts</div>
+            {stageOverdue > 0 && <div className="text-sm text-red-600 font-medium">{stageOverdue} overdue</div>}
+          </div>
+        );
+      })}</div>
+    </div>
+  );
+};
+
+// ─── SourceROIView ───
+const SourceROIView = ({ contacts }) => {
+  const sources = {};
+  contacts.forEach(c => { const src = c.source || 'Unknown'; if (!sources[src]) sources[src] = {count:0,value:0}; sources[src].count++; sources[src].value += c.dealValue||0; });
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-4">Source ROI</h1>
+      <div className="space-y-3">{Object.entries(sources).sort((a,b) => b[1].count - a[1].count).map(([src, data]) => (
+        <div key={src} className="bg-white rounded-lg p-4 border">
+          <div className="flex justify-between items-center"><div className="font-semibold">{src}</div><div className="text-sm text-gray-500">{data.count} contacts</div></div>
+          {data.value > 0 && <div className="text-green-600 font-medium mt-1">${data.value.toLocaleString()} pipeline value</div>}
+          <div className="mt-2 bg-gray-100 rounded-full h-2"><div className="bg-blue-500 h-2 rounded-full" style={{width: Math.min(100,(data.count/contacts.length)*100)+'%'}}></div></div>
+        </div>
+      ))}</div>
+    </div>
+  );
+};
+
+// ─── StagnationView ───
+const StagnationView = ({ contacts, stages, onSelectContact }) => {
+  const stagnant = contacts.filter(c => {
+    if (!c.lastContactDate) return true;
+    const threshold = STAGNATION[c.stage] || STAGNATION.default;
+    return daysBetween(c.lastContactDate, today()) > threshold;
+  }).sort((a, b) => {
+    const dA = a.lastContactDate ? daysBetween(a.lastContactDate, today()) : 999;
+    const dB = b.lastContactDate ? daysBetween(b.lastContactDate, today()) : 999;
+    return dB - dA;
+  });
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-2">Stagnation Alerts</h1>
+      <p className="text-gray-500 text-sm mb-4">Contacts that haven't been touched beyond their stage threshold.</p>
+      {stagnant.length === 0 ? <div className="text-center text-gray-400 py-12">No stagnant contacts. Great engagement!</div> : (
+        <div className="space-y-2">{stagnant.map(c => {
+          const days = c.lastContactDate ? daysBetween(c.lastContactDate, today()) : null;
+          const threshold = STAGNATION[c.stage] || STAGNATION.default;
+          return (
+            <div key={c.id} className="bg-white rounded-lg p-3 border flex justify-between items-center cursor-pointer hover:bg-gray-50 border-l-4 border-l-orange-400" onClick={() => onSelectContact(c)}>
+              <div><div className="font-medium">{c.name}</div><div className="text-sm text-gray-500">{c.stage}{c.company ? ' \u00B7 '+c.company : ''}</div></div>
+              <div className="text-right"><div className="text-orange-600 font-bold text-sm">{days ? days+'d silent' : 'Never contacted'}</div><div className="text-xs text-gray-400">Threshold: {threshold}d</div></div>
+            </div>
+          );
+        })}</div>
+      )}
+    </div>
+  );
+};
+
+// ─── CSVImportView ───
+const CSVImportView = ({ stages, onImport }) => {
+  const stgs = stages || DEFAULT_STAGES;
+  const [parsed, setParsed] = useState(null);
+  const [mapping, setMapping] = useState({});
+  const [targetStage, setTargetStage] = useState(stgs[0]);
+  const [importDone, setImportDone] = useState(false);
+  const fileRef = useRef();
+
+  const parseCSV = (text) => {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return null;
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const rows = lines.slice(1).map(line => {
+      const vals = []; let current = '', inQuote = false;
+      for (let ch of line) { if (ch === '"') inQuote = !inQuote; else if (ch === ',' && !inQuote) { vals.push(current.trim()); current = ''; } else current += ch; }
+      vals.push(current.trim()); return vals;
+    });
+    return { headers, rows };
+  };
+
+  const handleFile = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const p = parseCSV(ev.target.result);
+      if (p) { setParsed(p);
+        const autoMap = {}; const fields = ['name','company','email','phone','source','dealValue','notes'];
+        fields.forEach(f => { const idx = p.headers.findIndex(h => h.toLowerCase().includes(f.toLowerCase())); if (idx >= 0) autoMap[f] = idx; });
+        setMapping(autoMap);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImport = () => {
+    if (!parsed) return;
+    const newContacts = parsed.rows.filter(r => r.length > 0 && r.some(v => v)).map((row, i) => ({
+      id: 'imp_' + Date.now() + '_' + i,
+      name: mapping.name !== undefined ? row[mapping.name] || 'Unknown' : 'Unknown',
+      company: mapping.company !== undefined ? row[mapping.company] || '' : '',
+      email: mapping.email !== undefined ? row[mapping.email] || '' : '',
+      phone: mapping.phone !== undefined ? row[mapping.phone] || '' : '',
+      source: mapping.source !== undefined ? row[mapping.source] || 'Import' : 'Import',
+      dealValue: mapping.dealValue !== undefined ? Number(row[mapping.dealValue]) || 0 : 0,
+      monthlyRevenue: 0,
+      notes: mapping.notes !== undefined ? row[mapping.notes] || '' : '',
+      stage: targetStage, priority: 'medium', lastContactDate: today(),
+      nextFollowUp: calculateNextFollowUp(targetStage),
+      tags: ['imported'], interactions: [], notesTimeline: [],
+      createdAt: new Date().toISOString(), stageChangedAt: new Date().toISOString()
+    }));
+    onImport(newContacts); setImportDone(true);
+  };
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-4">Import Contacts</h1>
+      {importDone ? (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+          <div className="text-green-800 font-semibold">Import complete!</div>
+          <button onClick={() => { setImportDone(false); setParsed(null); }} className="mt-3 px-4 py-2 bg-green-600 text-white rounded-lg">Import More</button>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-xl border p-4 mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Upload CSV File</label>
+            <input type="file" accept=".csv" ref={fileRef} onChange={handleFile} className="border-0 p-0" />
+          </div>
+          {parsed && (
+            <>
+              <div className="bg-white rounded-xl border p-4 mb-4">
+                <h3 className="font-semibold mb-3">Column Mapping</h3>
+                <p className="text-sm text-gray-500 mb-3">Found {parsed.headers.length} columns, {parsed.rows.length} rows.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {['name','company','email','phone','source','dealValue','notes'].map(field => (
+                    <div key={field}><label className="text-sm text-gray-600 capitalize">{field}</label>
+                      <select value={mapping[field] !== undefined ? mapping[field] : ''} onChange={e => setMapping({...mapping, [field]: e.target.value === '' ? undefined : Number(e.target.value)})}>
+                        <option value="">\u2014 Skip \u2014</option>{parsed.headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border p-4 mb-4">
+                <h3 className="font-semibold mb-2">Assign to Stage</h3>
+                <select value={targetStage} onChange={e => setTargetStage(e.target.value)}>{stgs.map(s => <option key={s} value={s}>{s}</option>)}</select>
+              </div>
+              <button onClick={handleImport} className="w-full py-3 text-white rounded-lg font-semibold hover:opacity-90" style={{background: 'var(--accent)'}}>Import {parsed.rows.length} Contacts</button>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─── StageManager ───
+const StageManager = ({ stages, onUpdate, onRenameStage }) => {
+  const [newStage, setNewStage] = useState('');
+  const [editIdx, setEditIdx] = useState(-1);
+  const [editName, setEditName] = useState('');
+
+  const addStage = () => { const s = newStage.trim(); if (s && !stages.includes(s)) { onUpdate([...stages, s]); setNewStage(''); }};
+  const removeStage = (idx) => { if (stages.length <= 1) return; if (confirm('Remove stage "'+stages[idx]+'"?')) onUpdate(stages.filter((_, i) => i !== idx)); };
+  const startRename = (idx) => { setEditIdx(idx); setEditName(stages[idx]); };
+  const confirmRename = () => { const n = editName.trim(); if (n && n !== stages[editIdx]) onRenameStage(stages[editIdx], n); setEditIdx(-1); };
+  const moveStage = (idx, dir) => { const ns = [...stages]; const t = idx+dir; if (t<0||t>=ns.length) return; [ns[idx],ns[t]]=[ns[t],ns[idx]]; onUpdate(ns); };
+
+  return (
+    <div>
+      <h3 className="font-semibold mb-3">Pipeline Stages</h3>
+      <div className="space-y-2 mb-3">{stages.map((stage, idx) => (
+        <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
+          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: getStageColor(stage)}}></div>
+          {editIdx === idx ? (
+            <><input value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => e.key === 'Enter' && confirmRename()} className="flex-1" autoFocus />
+            <button onClick={confirmRename} className="text-green-600 text-sm font-medium">Save</button>
+            <button onClick={() => setEditIdx(-1)} className="text-gray-400 text-sm">Cancel</button></>
+          ) : (
+            <><span className="flex-1 text-sm font-medium">{stage}</span>
+            <button onClick={() => moveStage(idx,-1)} className="text-gray-400 hover:text-gray-600 text-xs" disabled={idx===0}>{'\u25B2'}</button>
+            <button onClick={() => moveStage(idx,1)} className="text-gray-400 hover:text-gray-600 text-xs" disabled={idx===stages.length-1}>{'\u25BC'}</button>
+            <button onClick={() => startRename(idx)} className="text-blue-500 text-xs">Rename</button>
+            <button onClick={() => removeStage(idx)} className="text-red-400 hover:text-red-600 text-xs">{'\u00D7'}</button></>
+          )}
+        </div>
+      ))}</div>
+      <div className="flex gap-2"><input value={newStage} onChange={e => setNewStage(e.target.value)} onKeyDown={e => e.key === 'Enter' && addStage()} placeholder="New stage name..." className="flex-1" />
+        <button onClick={addStage} className="px-4 py-2 text-white rounded-lg text-sm hover:opacity-90" style={{background: 'var(--accent)'}}>Add</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── CadenceEditor ───
+const CadenceEditor = ({ stages, cadence, onUpdate }) => {
+  const stgs = stages || DEFAULT_STAGES;
+  const cad = cadence || DEFAULT_CADENCE;
+  const handleChange = (stage, value) => { const v = parseInt(value); if (v > 0) onUpdate({...cad, [stage]: v}); };
+  return (
+    <div>
+      <h3 className="font-semibold mb-2">Follow-Up Cadence (days)</h3>
+      <p className="text-sm text-gray-500 mb-3">How many days after contact before a follow-up is due.</p>
+      <div className="space-y-2">{stgs.map(stage => (
+        <div key={stage} className="flex items-center gap-3 bg-gray-50 rounded-lg p-2">
+          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: getStageColor(stage)}}></div>
+          <span className="flex-1 text-sm">{stage}</span>
+          <input type="number" min="1" max="365" value={cad[stage] || 14} onChange={e => handleChange(stage, e.target.value)} className="w-20 text-center text-sm" />
+          <span className="text-xs text-gray-400">days</span>
+        </div>
+      ))}</div>
+    </div>
+  );
+};
+
+// ─── SettingsView ───
+const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdateCadence, contacts, onExport, onRestoreBackup, onDownloadJSON, onRestoreFile, onRestorePreUpdate }) => {
+  const fileRef = useRef();
+  const preUpdateKeys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(STORAGE_KEY + '-pre-update-')) preUpdateKeys.push(k);
+  }
+  preUpdateKeys.sort().reverse();
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <div className="bg-white rounded-xl border p-4 mb-6"><StageManager stages={stages} onUpdate={onUpdateStages} onRenameStage={onRenameStage} /></div>
+      <div className="bg-white rounded-xl border p-4 mb-6"><CadenceEditor stages={stages} cadence={cadence} onUpdate={onUpdateCadence} /></div>
+      <div className="bg-white rounded-xl border p-4 mb-6">
+        <h3 className="font-semibold mb-3">Export & Backup</h3>
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={onExport} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">Export CSV</button>
+          <button onClick={onDownloadJSON} className="px-4 py-2 text-white rounded-lg text-sm hover:opacity-90" style={{background: 'var(--accent)'}}>Download JSON Backup</button>
+        </div>
+      </div>
+      <div className="bg-white rounded-xl border p-4 mb-6">
+        <h3 className="font-semibold mb-3">Data Recovery</h3>
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={onRestoreBackup} className="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm">Restore from Auto-Backup</button>
+          <div><button onClick={() => fileRef.current && fileRef.current.click()} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm">Restore from JSON File</button>
+            <input type="file" ref={fileRef} accept=".json" className="hidden" onChange={e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { onRestoreFile(ev.target.result); }; reader.readAsText(file); }} />
+          </div>
+        </div>
+        {preUpdateKeys.length > 0 && (
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <h4 className="font-medium text-amber-800 text-sm mb-2">Pre-Update Backups ({preUpdateKeys.length})</h4>
+            <p className="text-xs text-amber-600 mb-2">Snapshots taken before a master data reset.</p>
+            <div className="space-y-1">
+              {preUpdateKeys.map(k => {
+                const ts = parseInt(k.split('-pre-update-')[1]);
+                const dateStr = ts ? new Date(ts).toLocaleString() : k;
+                return (
+                  <div key={k} className="flex items-center justify-between bg-white rounded p-2 border">
+                    <span className="text-xs text-gray-600">{dateStr}</span>
+                    <button onClick={() => onRestorePreUpdate(k)} className="px-3 py-1 bg-amber-500 text-white rounded text-xs font-medium hover:bg-amber-600">Restore This</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {(() => {
+          const autoKeys = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(STORAGE_KEY + '-auto-timed-')) autoKeys.push(k);
+          }
+          autoKeys.sort().reverse();
+          if (autoKeys.length === 0) return null;
+          return (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-medium text-blue-800 text-sm mb-2">Timed Auto-Backups ({autoKeys.length})</h4>
+              <p className="text-xs text-blue-600 mb-2">Saved every 30 minutes while the CRM is open.</p>
+              <div className="space-y-1">
+                {autoKeys.map((k, i) => {
+                  const ts = parseInt(k.split('-auto-timed-')[1]);
+                  const dateStr = ts ? new Date(ts).toLocaleString() : k;
+                  return (
+                    <div key={k} className="flex items-center justify-between bg-white rounded p-2 border">
+                      <span className="text-xs text-gray-600">{dateStr}{i === 0 ? ' (latest)' : ''}</span>
+                      <button onClick={() => onRestorePreUpdate(k)} className="px-3 py-1 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600">Restore This</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+      <div className="bg-white rounded-xl border p-4">
+        <h3 className="font-semibold mb-2">About</h3>
+        <p className="text-sm text-gray-500">Inner Game CRM v{STORAGE_VERSION}</p>
+        <p className="text-sm text-gray-500">Data stored locally in your browser. {contacts.length} contacts loaded.</p>
+      </div>
+    </div>
+  );
+};
+
+// ─── Firestore Sync Layer ───
+// Fixed document path for single-user CRM (data shared across all devices)
+const CRM_DOC_ID = 'demo_crm_main';
+const firestoreDocPath = () => _fbDb ? _fbDb.collection('crm_data').doc(CRM_DOC_ID) : null;
+
+const firestoreSave = async (data) => {
+  if (!_fbReady) return;
+  try {
+    const doc = firestoreDocPath();
+    if (!doc) return;
+    const json = JSON.stringify(data);
+    await doc.set({ payload: json, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    console.log('[CRM] Firestore save OK (' + (data.contacts||[]).length + ' contacts, ' + Math.round(json.length/1024) + 'KB)');
+  } catch(e) { console.error('[CRM] Firestore save failed:', e); }
+};
+
+const firestoreLoad = async () => {
+  if (!_fbReady) return null;
+  try {
+    const doc = firestoreDocPath();
+    if (!doc) return null;
+    const snap = await doc.get();
+    if (!snap.exists) return null;
+    const raw = snap.data().payload;
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { console.error('[CRM] Firestore load failed:', e); return null; }
+};
+
+// SHA-256 hash function for password verification
+const sha256 = async (message) => {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+const PASS_HASH = '2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea';
+const AUTH_KEY = 'YOUR_PROJECT_ID-auth';
+
+// ─── Auth Wrapper & Login Screen ───
+const LoginScreen = ({ onLogin, loading }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [checking, setChecking] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setChecking(true);
+    try {
+      const hash = await sha256(password);
+      if (username === 'demo' && hash === PASS_HASH) {
+        sessionStorage.setItem(AUTH_KEY, 'true');
+        // Sign in anonymously to Firebase for Firestore access
+        if (_fbReady) await _fbAuth.signInAnonymously();
+        onLogin();
+      } else {
+        setError('Invalid username or password');
+      }
+    } catch(err) {
+      setError('Login failed: ' + err.message);
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div style={{fontSize: '48px', marginBottom: '16px'}}>{'\uD83C\uDFAF'}</div>
+        <h1 className="text-2xl font-bold mb-2" style={{color: 'var(--text-primary)'}}>Inner Game CRM</h1>
+        <p className="text-sm mb-6" style={{color: 'var(--text-secondary)'}}>Sign in to access your CRM</p>
+        {loading ? (
+          <div className="text-sm" style={{color: 'var(--text-tertiary)'}}>Loading...</div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <input type="text" className="login-input" placeholder="Username" value={username}
+              onChange={e => setUsername(e.target.value)} autoComplete="username" autoFocus />
+            <input type="password" className="login-input" placeholder="Password" value={password}
+              onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+            {error && <div className="login-error">{error}</div>}
+            <button type="submit" className="login-btn" disabled={checking || !username || !password}>
+              {checking ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DataMigrationScreen = ({ onImport, onSkip }) => {
+  const fileRef = useRef();
+  const [importing, setImporting] = useState(false);
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        onImport(data);
+      } catch(err) { alert('Invalid JSON file'); setImporting(false); }
+    };
+    reader.readAsText(file);
+  };
+
+  // Check if there's localStorage data to auto-migrate
+  const localData = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('YOUR_PROJECT_ID-data');
+      if (raw) { const d = JSON.parse(raw); if (d.contacts && d.contacts.length > 0) return d; }
+    } catch(e) {}
+    return null;
+  }, []);
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div style={{fontSize: '48px', marginBottom: '16px'}}>{'📦'}</div>
+        <h1 className="text-xl font-bold mb-2" style={{color: 'var(--text-primary)'}}>Welcome, Dhiren!</h1>
+        <p className="text-sm mb-6" style={{color: 'var(--text-secondary)'}}>No CRM data found in the cloud yet. Import your existing data to get started.</p>
+
+        {localData && (
+          <div className="mb-4">
+            <button onClick={() => { setImporting(true); onImport(localData); }}
+              className="w-full py-3 text-white rounded-lg font-semibold hover:opacity-90 mb-3" style={{background: 'var(--accent)'}}>
+              {importing ? 'Importing...' : 'Import from this browser (' + localData.contacts.length + ' contacts)'}
+            </button>
+            <div className="text-xs mb-3" style={{color: 'var(--text-tertiary)'}}>Found existing data in this browser's storage</div>
+          </div>
+        )}
+
+        <div className="mb-4">
+          <button onClick={() => fileRef.current && fileRef.current.click()}
+            className="w-full py-3 rounded-lg font-semibold border" style={{background: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border)'}}>
+            Upload JSON Backup File
+          </button>
+          <input type="file" ref={fileRef} accept=".json" className="hidden" onChange={handleFile} />
+        </div>
+
+        <button onClick={onSkip} className="text-sm hover:underline" style={{color: 'var(--text-tertiary)'}}>
+          Start fresh (empty CRM)
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ─── App Wrapper (handles auth + data loading) ───
+const AppWrapper = () => {
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem(AUTH_KEY) === 'true');
+  const [cloudData, setCloudData] = useState(undefined); // undefined = loading, null = not found
+  const [migrationDone, setMigrationDone] = useState(false);
+  const [fbReady, setFbReady] = useState(false);
+
+  // On mount, if already authed, ensure Firebase anonymous auth
+  useEffect(() => {
+    if (!authed || !_fbReady) return;
+    const init = async () => {
+      if (!_fbAuth.currentUser) {
+        await _fbAuth.signInAnonymously();
+      }
+      setFbReady(true);
+    };
+    init().catch(e => { console.warn('[CRM] Firebase init:', e); setFbReady(true); });
+  }, [authed]);
+
+  // Load cloud data when Firebase is ready
+  useEffect(() => {
+    if (!authed || !fbReady) return;
+    firestoreLoad().then(d => {
+      setCloudData(d || null);
+      if (d) setMigrationDone(true);
+    });
+  }, [authed, fbReady]);
+
+  // Not logged in
+  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} loading={false} />;
+
+  // Loading cloud data
+  if (_fbReady && cloudData === undefined && !migrationDone) {
+    return <LoginScreen loading={true} />;
+  }
+
+  // No cloud data — show migration screen
+  if (_fbReady && cloudData === null && !migrationDone) {
+    return <DataMigrationScreen onSkip={() => { setMigrationDone(true); setCloudData(null); }}
+      onImport={(d) => {
+        const migrated = migrateData(d);
+        firestoreSave(migrated);
+        setCloudData(migrated);
+        setMigrationDone(true);
+      }} />;
+  }
+
+  return <App user={authed} initialCloudData={cloudData} />;
+};
+
+// ─── App Component ───
+const App = ({ user, initialCloudData }) => {
+  const [data, setData] = useState(() => {
+    if (initialCloudData) return migrateData(initialCloudData);
+    return loadData();
+  });
+  const [activeTab, setActiveTab] = useState('today');
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showRestoreBanner, setShowRestoreBanner] = useState(true);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [darkMode, setDarkMode] = useState(() => {
+    const stored = localStorage.getItem('YOUR_PROJECT_ID-theme');
+    if (stored) return stored === 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('YOUR_PROJECT_ID-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+
+  const preUpdateKeys = useMemo(() => {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(STORAGE_KEY + '-pre-update-')) keys.push(k);
+    }
+    return keys.sort().reverse();
+  }, []);
+
+  const contacts = data.contacts || [];
+  const stages = data.stages || DEFAULT_STAGES;
+  const cadence = data.cadence || DEFAULT_CADENCE;
+  const [lastAutoBackup, setLastAutoBackup] = useState(null);
+  const [lastBackupDownload, setLastBackupDownload] = useState(() => {
+    const stored = localStorage.getItem(LAST_BACKUP_DOWNLOAD_KEY);
+    return stored ? new Date(stored) : null;
+  });
+  const backupIsStale = useMemo(() => {
+    if (!lastBackupDownload) return true;
+    const diffDays = (Date.now() - lastBackupDownload.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays > BACKUP_REMINDER_DAYS;
+  }, [lastBackupDownload]);
+
+  useEffect(() => {
+    saveData(data);
+    if (user && _fbReady) firestoreSave(data);
+  }, [data]);
+
+  // Real-time Firestore listener for cross-device sync
+  useEffect(() => {
+    if (!user || !_fbReady) return;
+    const doc = firestoreDocPath();
+    if (!doc) return;
+    const unsub = doc.onSnapshot({ includeMetadataChanges: false }, (snap) => {
+      if (!snap.exists) return;
+      const meta = snap.metadata;
+      // Only apply remote changes (not our own writes)
+      if (!meta.hasPendingWrites) {
+        try {
+          const remote = JSON.parse(snap.data().payload);
+          if (remote && remote.contacts) {
+            // Compare contact counts to detect real remote changes
+            setData(prev => {
+              const prevJson = JSON.stringify(prev);
+              const remoteJson = snap.data().payload;
+              if (prevJson !== remoteJson) {
+                console.log('[CRM] Synced from cloud (' + remote.contacts.length + ' contacts)');
+                return migrateData(remote);
+              }
+              return prev;
+            });
+          }
+        } catch(e) { console.warn('[CRM] Snapshot parse error:', e); }
+      }
+    });
+    return () => unsub();
+  }, [user]);
+
+  // On first load, check if IDB has better data than localStorage
+  useEffect(() => {
+    loadDataWithIDBFallback(data).then(betterData => {
+      if (betterData && betterData.contacts && betterData.contacts.length > (data.contacts || []).length) {
+        setData(betterData);
+        console.log('[CRM] IDB fallback provided more contacts: ' + betterData.contacts.length + ' vs ' + (data.contacts || []).length);
+      }
+    });
+  }, []);
+
+  // Save to IDB + localStorage on tab close / navigate away
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try {
+        const json = JSON.stringify(data);
+        localStorage.setItem(STORAGE_KEY, json);
+        // navigator.sendBeacon not suitable for localStorage but IDB save is async — trigger it
+        idbSave(data);
+      } catch(e) { console.warn('[CRM] beforeunload save failed', e); }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [data]);
+
+  // Auto-backup every 30 minutes
+  const AUTO_BACKUP_KEY = STORAGE_KEY + '-auto-timed-';
+  const MAX_AUTO_BACKUPS = 10;
+  const doAutoBackup = useCallback(() => {
+    try {
+      const json = JSON.stringify(data);
+      const key = AUTO_BACKUP_KEY + Date.now();
+      localStorage.setItem(key, json);
+      setLastAutoBackup(new Date());
+      // Clean old auto-backups, keep only the most recent MAX_AUTO_BACKUPS
+      const autoKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(AUTO_BACKUP_KEY)) autoKeys.push(k);
+      }
+      autoKeys.sort().reverse();
+      autoKeys.slice(MAX_AUTO_BACKUPS).forEach(k => localStorage.removeItem(k));
+      console.log('[CRM] Auto-backup saved (' + (data.contacts||[]).length + ' contacts)');
+    } catch(e) { console.error('[CRM] Auto-backup failed', e); }
+  }, [data]);
+
+  useEffect(() => {
+    doAutoBackup(); // backup on first load
+    const interval = setInterval(doAutoBackup, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [doAutoBackup]);
+
+  // Toast helper
+  const showToast = useCallback((msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = (e.target.tagName || '').toLowerCase();
+      const inInput = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+
+      // Esc always works
+      if (e.key === 'Escape') {
+        if (showShortcuts) { setShowShortcuts(false); return; }
+        if (selectedContact) { setSelectedContact(null); return; }
+        return;
+      }
+
+      // Skip shortcuts when typing in form fields
+      if (inInput) return;
+
+      if (e.key === '?') { e.preventDefault(); setShowShortcuts(s => !s); return; }
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); handleAddContact(); showToast('New contact created'); return; }
+      if (e.key === 'd' || e.key === 'D') { e.preventDefault(); setDarkMode(dm => !dm); return; }
+      if (e.key === '/') {
+        e.preventDefault();
+        const searchEl = document.querySelector('input[placeholder*="Search"]');
+        if (searchEl) searchEl.focus();
+        return;
+      }
+
+      // Number keys for tab switching (1-based, matching tab order)
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= tabs.length) {
+        e.preventDefault();
+        setActiveTab(tabs[num - 1].id);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showShortcuts, selectedContact]);
+
+  const handleUpdateContact = (updated) => { setData(prev => ({...prev, contacts: prev.contacts.map(c => c.id === updated.id ? {...updated, tags: updated.tags||[]} : c)})); };
+  const handleDeleteContact = (id) => { setData(prev => ({...prev, contacts: prev.contacts.filter(c => c.id !== id)})); };
+  const handleUpdateStages = (newStages) => { setData(prev => ({...prev, stages: newStages})); };
+  const handleRenameStage = (oldName, newName) => {
+    setData(prev => {
+      const nc = {...(prev.cadence||{})}; if (nc[oldName] !== undefined) { nc[newName] = nc[oldName]; delete nc[oldName]; }
+      return {...prev, stages: (prev.stages||DEFAULT_STAGES).map(s => s===oldName?newName:s), contacts: prev.contacts.map(c => c.stage===oldName?{...c,stage:newName}:c), cadence: nc};
+    });
+  };
+  const handleUpdateCadence = (nc) => {
+    setData(prev => {
+      const oldCad = prev.cadence || DEFAULT_CADENCE;
+      const changedStages = Object.keys(nc).filter(s => nc[s] !== oldCad[s]);
+      if (changedStages.length === 0) return {...prev, cadence: nc};
+      const updatedContacts = (prev.contacts || []).map(c => {
+        if (changedStages.includes(c.stage)) {
+          const baseDate = c.lastContactDate || today();
+          return {...c, nextFollowUp: calculateNextFollowUp(c.stage, nc, baseDate)};
+        }
+        return c;
+      });
+      return {...prev, cadence: nc, contacts: updatedContacts};
+    });
+  };
+  const handleBatchImport = (nc) => { setData(prev => ({...prev, contacts: [...prev.contacts, ...nc]})); };
+  const handleExport = () => exportContactsToCSV(contacts);
+  const handleRestoreFromBackup = () => {
+    try {
+      const b = localStorage.getItem(BACKUP_KEY);
+      if (!b) { alert('No auto-backup found.'); return; }
+      const restored = migrateData(JSON.parse(b));
+      const freshData = getDefaultData();
+      const existingIds = new Set((restored.contacts || []).map(c => c.id));
+      const existingNames = new Set((restored.contacts || []).map(c => c.name.toLowerCase().trim()));
+      const newContacts = (freshData.contacts || []).filter(c => !existingIds.has(c.id) && !existingNames.has(c.name.toLowerCase().trim()));
+      const mergedStages = [...new Set([...(restored.stages || []), ...(freshData.stages || [])])];
+      const mergedCadence = {...(freshData.cadence || {}), ...(restored.cadence || {})};
+      const merged = {...restored, contacts: [...restored.contacts, ...newContacts], stages: mergedStages, cadence: mergedCadence};
+      setData(merged);
+      alert('Restored (' + restored.contacts.length + ' contacts) + merged ' + newContacts.length + ' new.');
+    } catch(e) { alert('Failed: '+e.message); }
+  };
+  const handleDownloadJSON = () => { const j = JSON.stringify(data, null, 2); const b = new Blob([j], {type:'application/json'}); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download='crm-backup-'+today()+'.json'; a.click(); URL.revokeObjectURL(u); localStorage.setItem(LAST_BACKUP_DOWNLOAD_KEY, new Date().toISOString()); setLastBackupDownload(new Date()); };
+  const handleRestoreFromFile = (content) => { try { const r = migrateData(JSON.parse(content)); setData(r); alert('Restored ('+r.contacts.length+' contacts).'); } catch(e) { alert('Failed: '+e.message); }};
+  const handleRestorePreUpdate = (key) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) { alert('Backup key not found.'); return; }
+      const restored = migrateData(JSON.parse(raw));
+      const freshData = getDefaultData();
+      const existingIds = new Set((restored.contacts || []).map(c => c.id));
+      const existingNames = new Set((restored.contacts || []).map(c => c.name.toLowerCase().trim()));
+      const newContacts = (freshData.contacts || []).filter(c => !existingIds.has(c.id) && !existingNames.has(c.name.toLowerCase().trim()));
+      const mergedStages = [...new Set([...(restored.stages || []), ...(freshData.stages || [])])];
+      const mergedCadence = {...(freshData.cadence || {}), ...(restored.cadence || {})};
+      const merged = {...restored, contacts: [...restored.contacts, ...newContacts], stages: mergedStages, cadence: mergedCadence};
+      setData(merged);
+      localStorage.setItem(MASTER_VERSION_KEY, MASTER_DATA_VERSION);
+      alert('Restored backup (' + restored.contacts.length + ' contacts) + merged ' + newContacts.length + ' new contacts. Total: ' + merged.contacts.length);
+    } catch(e) { alert('Failed: '+e.message); }
+  };
+  const handleAddContact = () => {
+    const nc = { id: Math.random().toString(36).substr(2,9), name: 'New Contact', company: '', stage: stages[0], email: '', phone: '', source: 'Direct',
+      dealValue: 0, monthlyRevenue: 0, priority: 'medium', lastContactDate: today(), nextFollowUp: calculateNextFollowUp(stages[0], cadence),
+      notes: '', tags: [], interactions: [], notesTimeline: [], createdAt: new Date().toISOString(), stageChangedAt: new Date().toISOString() };
+    setData(prev => ({...prev, contacts: [nc, ...prev.contacts]}));
+    setSelectedContact(nc);
+  };
+
+  const tabs = [
+    { id: 'today', label: 'Today', icon: '\u2600\uFE0F' },
+    { id: 'dashboard', label: 'Dashboard', icon: '\uD83D\uDCCA' },
+    { id: 'contacts', label: 'Contacts', icon: '\uD83D\uDC65' },
+    { id: 'pipeline', label: 'Pipeline', icon: '\uD83D\uDCC8' },
+    { id: 'deals', label: 'Deals', icon: '\uD83D\uDCB0' },
+    { id: 'followups', label: 'Follow-ups', icon: '\uD83D\uDCDE' },
+    { id: 'digest', label: 'Weekly Digest', icon: '\uD83D\uDCCB' },
+    { id: 'roi', label: 'Source ROI', icon: '\uD83D\uDCC9' },
+    { id: 'stagnation', label: 'Stagnation', icon: '\u26A0\uFE0F' },
+    { id: 'import', label: 'Import', icon: '\uD83D\uDCE5' },
+    { id: 'settings', label: 'Settings', icon: '\u2699\uFE0F' }
+  ];
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'today': return <TodayView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} cadence={cadence} />;
+      case 'dashboard': return <DashboardView contacts={contacts} stages={stages} />;
+      case 'contacts': return <ContactsView contacts={contacts} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} stages={stages} cadence={cadence} />;
+      case 'pipeline': return <PipelineView contacts={contacts} onUpdateContact={handleUpdateContact} onSelectContact={setSelectedContact} stages={stages} cadence={cadence} />;
+      case 'deals': return <DealsView contacts={contacts} stages={stages} />;
+      case 'followups': return <FollowUpsView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} cadence={cadence} />;
+      case 'digest': return <WeeklyDigestView contacts={contacts} stages={stages} />;
+      case 'roi': return <SourceROIView contacts={contacts} />;
+      case 'stagnation': return <StagnationView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} />;
+      case 'import': return <CSVImportView stages={stages} onImport={handleBatchImport} />;
+      case 'settings': return <SettingsView stages={stages} onUpdateStages={handleUpdateStages} onRenameStage={handleRenameStage} cadence={cadence} onUpdateCadence={handleUpdateCadence} contacts={contacts} onExport={handleExport} onRestoreBackup={handleRestoreFromBackup} onDownloadJSON={handleDownloadJSON} onRestoreFile={handleRestoreFromFile} onRestorePreUpdate={handleRestorePreUpdate} />;
+      default: return <DashboardView contacts={contacts} stages={stages} />;
+    }
+  };
+
+  return (
+    <div className="flex h-screen" style={{background: 'var(--bg-primary)', color: 'var(--text-primary)'}}>
+      <div className={'desktop-sidebar ' + (sidebarOpen ? 'w-56' : 'w-0') + ' border-r flex-shrink-0 transition-all overflow-hidden'} style={{background: 'var(--sidebar-bg)'}}>
+        <div className="p-4 border-b"><h1 className="text-lg font-bold" style={{color: 'var(--accent)'}}>Inner Game CRM</h1></div>
+        <nav className="p-3 space-y-1">{tabs.map(tab => (
+          <div key={tab.id} className={'sidebar-item text-sm ' + (activeTab === tab.id ? 'active' : '')} onClick={() => setActiveTab(tab.id)}>
+            <span>{tab.icon}</span><span>{tab.label}</span>
+          </div>
+        ))}</nav>
+      </div>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="desktop-topbar border-b px-4 py-3 flex items-center gap-3" style={{background: 'var(--topbar-bg)'}}>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-gray-400 hover:text-gray-600 text-lg">{'\u2630'}</button>
+          <div className="flex-1" />
+          {lastAutoBackup && <span className="backup-text text-xs text-gray-400" title="Auto-backup runs every 30 minutes">{'\uD83D\uDCBE'} Backed up {lastAutoBackup.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>}
+          <button onClick={() => { doAutoBackup(); alert('Manual backup saved.'); }} className="backup-text text-xs text-gray-400 hover:text-blue-500 cursor-pointer" title="Save backup now">{'\uD83D\uDD04'}</button>
+          <button onClick={handleDownloadJSON} className={"px-3 py-2 rounded-lg text-sm font-medium transition-colors " + (backupIsStale ? "bg-amber-500 text-white hover:bg-amber-600" : "")} style={backupIsStale ? {} : {background: 'var(--bg-tertiary)', color: 'var(--text-secondary)'}} title={lastBackupDownload ? "Last downloaded: " + lastBackupDownload.toLocaleDateString() : "Never downloaded a backup"}>
+            {backupIsStale ? '\u26A0\uFE0F Backup' : '\uD83D\uDCE5 Backup'}
+          </button>
+          {_fbReady && <span className="sync-badge sync-online">{'\u2601'} Synced</span>}
+          {!_fbReady && <span className="sync-badge sync-offline">{'\uD83D\uDCBB'} Local Only</span>}
+          <button onClick={() => setDarkMode(d => !d)} className="theme-toggle" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} />
+          <button onClick={() => setShowShortcuts(true)} className="text-xs text-gray-400 hover:text-gray-600 cursor-pointer" title="Keyboard shortcuts"><span className="kbd">?</span></button>
+          <button onClick={handleAddContact} className="px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90" style={{background: 'var(--accent)'}}>+ Add</button>
+          <button onClick={() => { if(confirm('Sign out?')) { sessionStorage.removeItem(AUTH_KEY); if(_fbReady) _fbAuth.signOut(); window.location.reload(); } }}
+            className="flex items-center gap-1" title="Sign out">
+            <span className="w-7 h-7 rounded-full flex items-center justify-content text-xs font-bold text-white" style={{background: 'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center'}}>D</span>
+          </button>
+        </div>
+        {backupIsStale && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-3" style={{zIndex:39}}>
+            <span className="text-amber-600">{'\u26A0\uFE0F'}</span>
+            <span className="text-sm text-amber-800 flex-1">
+              {lastBackupDownload
+                ? 'Your last backup download was ' + Math.floor((Date.now() - lastBackupDownload.getTime()) / (1000*60*60*24)) + ' days ago. Download a fresh backup to protect your data.'
+                : 'You have never downloaded a backup. Your data only exists in this browser\u2019s localStorage and can be lost if browser data is cleared.'}
+            </span>
+            <button onClick={handleDownloadJSON} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 flex-shrink-0">Download Now</button>
+          </div>
+        )}
+        {showRestoreBanner && preUpdateKeys.length > 0 && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-3" style={{zIndex:40}}>
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-600 text-lg">{'\u26A0\uFE0F'}</span>
+                <span className="font-medium text-amber-800 text-sm">Pre-update backups found — select one to restore your check-ins:</span>
+              </div>
+              <button onClick={() => setShowRestoreBanner(false)} className="text-amber-400 hover:text-amber-600 text-xl leading-none flex-shrink-0">{'\u00D7'}</button>
+            </div>
+            <div className="space-y-2 ml-7">
+              {preUpdateKeys.map((k, i) => {
+                const ts = parseInt(k.split('-pre-update-')[1]);
+                const dateStr = ts ? new Date(ts).toLocaleString() : 'Unknown time';
+                return (
+                  <div key={k} className="flex items-center justify-between bg-white rounded-lg p-2 border border-amber-200">
+                    <span className="text-sm text-gray-700">{dateStr}{i === 0 ? ' (most recent)' : ''}</span>
+                    <button onClick={() => { handleRestorePreUpdate(k); setShowRestoreBanner(false); }} className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 cursor-pointer">Restore This Backup</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div className="flex flex-1 overflow-hidden">
+          <div className="main-content flex-1 overflow-y-auto p-6">{renderContent()}</div>
+          {selectedContact && <ContactDetail contact={selectedContact} onClose={() => setSelectedContact(null)} onUpdate={handleUpdateContact} stages={stages} onDelete={handleDeleteContact} cadence={cadence} />}
+        </div>
+      </div>
+      {/* Mobile bottom nav */}
+      <div className="mobile-bottom-nav">
+        <div className="flex justify-around w-full">
+          {tabs.slice(0, 6).map(tab => (
+            <div key={tab.id} className={'mobile-tab ' + (activeTab === tab.id ? 'active' : '')} onClick={() => setActiveTab(tab.id)}>
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </div>
+          ))}
+          <div className={'mobile-tab ' + (['roi','stagnation','import','settings','digest'].includes(activeTab) ? 'active' : '')} onClick={() => setActiveTab(activeTab === 'settings' ? 'today' : 'settings')}>
+            <span>{'\u2699\uFE0F'}</span>
+            <span>More</span>
+          </div>
+        </div>
+      </div>
+      {/* Keyboard shortcut cheat sheet */}
+      {showShortcuts && (
+        <div className="shortcut-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="rounded-xl shadow-2xl w-full max-w-md p-6" style={{background: 'var(--bg-secondary)'}} onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>Keyboard Shortcuts</h2>
+              <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-gray-600 text-2xl">{'\u00D7'}</button>
+            </div>
+            <div className="space-y-3">
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Navigation</div>
+              {tabs.map((tab, i) => (
+                <div key={tab.id} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">{tab.icon} {tab.label}</span>
+                  <span className="kbd">{i + 1}</span>
+                </div>
+              ))}
+              <hr className="border-gray-100" />
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</div>
+              <div className="flex items-center justify-between"><span className="text-sm text-gray-700">New contact</span><span className="kbd">N</span></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-gray-700">Focus search</span><span className="kbd">/</span></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-gray-700">Toggle dark mode</span><span className="kbd">D</span></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-gray-700">Close panel</span><span className="kbd">Esc</span></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-gray-700">Show this help</span><span className="kbd">?</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Toast notification */}
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+};
+
+ReactDOM.render(<AppWrapper />, document.getElementById('root'));
+</script>
+</body>
+</html>
