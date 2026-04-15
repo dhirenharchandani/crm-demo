@@ -12,31 +12,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-  // ─── Firebase Configuration ───
-  // REPLACE with your Firebase project config
-  const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyBXsoElMHLajz0II4aAr924K2h6ugQOVBk",
-    authDomain: "inner-game-crm.firebaseapp.com",
-    projectId: "inner-game-crm",
-    storageBucket: "inner-game-crm.firebasestorage.app",
-    messagingSenderId: "328943165826",
-    appId: "1:328943165826:web:009fa9d1ac68d49e0f6f9b"
-  };
-
-  // Initialize Firebase
-  const _fbReady = FIREBASE_CONFIG.apiKey !== "PLACEHOLDER";
-  let _fbApp, _fbAuth, _fbDb;
-  if (_fbReady) {
-    _fbApp = firebase.initializeApp(FIREBASE_CONFIG);
-    _fbAuth = firebase.auth();
-    _fbDb = firebase.firestore();
-    _fbDb.enablePersistence({ synchronizeTabs: true }).catch(e => console.warn('[CRM] Firestore persistence:', e.code));
-  }
+  const SUPABASE_URL = 'https://gdtiqxqtfyefsqhofili.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_ILSvvQ9CdTdezM1-yRaSMQ_QSzWgyb8';
+  const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 </script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -1595,31 +1576,29 @@ const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdate
   );
 };
 
-// ─── Firestore Sync Layer ───
-// Fixed document path for single-user CRM (data shared across all devices)
-const firestoreDocPath = () => _fbDb && CURRENT_UID ? _fbDb.collection('crm_data').doc(CURRENT_UID) : null;
-
-const firestoreSave = async (data) => {
-  if (!_fbReady) return;
+// ─── Supabase Sync Layer ───
+// ─── Supabase Sync Layer ───
+const cloudSave = async (data) => {
+  if (!CURRENT_UID) return;
   try {
-    const doc = firestoreDocPath();
-    if (!doc) return;
-    const json = JSON.stringify(data);
-    await doc.set({ payload: json, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    console.log('[CRM] Firestore save OK (' + (data.contacts||[]).length + ' contacts, ' + Math.round(json.length/1024) + 'KB)');
-  } catch(e) { console.error('[CRM] Firestore save failed:', e); }
+    const { error } = await _sb.from('crm_data').upsert({
+      user_id: CURRENT_UID,
+      payload: data,
+      updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    console.log('[CRM] Cloud save OK (' + (data.contacts||[]).length + ' contacts)');
+  } catch(e) { console.error('[CRM] Cloud save failed:', e); }
 };
 
-const firestoreLoad = async () => {
-  if (!_fbReady) return null;
+const cloudLoad = async () => {
+  if (!CURRENT_UID) return null;
   try {
-    const doc = firestoreDocPath();
-    if (!doc) return null;
-    const snap = await doc.get();
-    if (!snap.exists) return null;
-    const raw = snap.data().payload;
-    return raw ? JSON.parse(raw) : null;
-  } catch(e) { console.error('[CRM] Firestore load failed:', e); return null; }
+    const { data, error } = await _sb.from('crm_data').select('payload').eq('user_id', CURRENT_UID).single();
+    if (error && error.code === 'PGRST116') return null; // no row found
+    if (error) throw error;
+    return data ? data.payload : null;
+  } catch(e) { console.error('[CRM] Cloud load failed:', e); return null; }
 };
 
 // ─── Auth Wrapper & Login/Signup Screen ───
@@ -1639,21 +1618,25 @@ const AuthScreen = ({ onAuth, loading }) => {
     try {
       if (mode === 'signup') {
         if (password.length < 6) { setError('Password must be at least 6 characters'); setChecking(false); return; }
-        const cred = await _fbAuth.createUserWithEmailAndPassword(email, password);
-        if (name) await cred.user.updateProfile({ displayName: name });
-        onAuth(cred.user);
+        const { data: signUpData, error: signUpErr } = await _sb.auth.signUp({
+          email, password,
+          options: { data: { display_name: name || '' } }
+        });
+        if (signUpErr) throw signUpErr;
+        if (signUpData.user && !signUpData.session) {
+          setError('');
+          setResetSent(false);
+          setChecking(false);
+          alert('Check your email to confirm your account, then sign in.');
+          setMode('login');
+          return;
+        }
       } else {
-        const cred = await _fbAuth.signInWithEmailAndPassword(email, password);
-        onAuth(cred.user);
+        const { error: signInErr } = await _sb.auth.signInWithPassword({ email, password });
+        if (signInErr) throw signInErr;
       }
     } catch(err) {
-      const msg = err.code === 'auth/user-not-found' ? 'No account with that email' :
-                  err.code === 'auth/wrong-password' ? 'Incorrect password' :
-                  err.code === 'auth/invalid-credential' ? 'Invalid email or password' :
-                  err.code === 'auth/email-already-in-use' ? 'An account with that email already exists' :
-                  err.code === 'auth/invalid-email' ? 'Please enter a valid email' :
-                  err.code === 'auth/too-many-requests' ? 'Too many attempts. Try again later.' :
-                  err.message;
+      const msg = err.message || 'Something went wrong';
       setError(msg);
     }
     setChecking(false);
@@ -1662,7 +1645,8 @@ const AuthScreen = ({ onAuth, loading }) => {
   const handleForgotPassword = async () => {
     if (!email) { setError('Enter your email first'); return; }
     try {
-      await _fbAuth.sendPasswordResetEmail(email);
+      const { error: resetErr } = await _sb.auth.resetPasswordForEmail(email);
+      if (resetErr) throw resetErr;
       setResetSent(true);
       setError('');
     } catch(err) { setError('Could not send reset email. Check the address.'); }
@@ -1779,19 +1763,21 @@ const AppWrapper = () => {
   const [cloudData, setCloudData] = useState(undefined);
   const [migrationDone, setMigrationDone] = useState(false);
 
-  // Listen to Firebase auth state
+  // Listen to Supabase auth state
   useEffect(() => {
-    if (!_fbReady) { setAuthChecked(true); return; }
-    const unsub = _fbAuth.onAuthStateChanged((user) => {
-      if (user) {
-        initStorageKeys(user.uid);
-        setCurrentUser(user);
-      } else {
-        setCurrentUser(null);
-      }
+    _sb.auth.getSession().then(({ data: { session } }) => {
+      const user = session?.user || null;
+      if (user) initStorageKeys(user.id);
+      setCurrentUser(user);
       setAuthChecked(true);
     });
-    return unsub;
+    const { data: { subscription } } = _sb.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user || null;
+      if (user) initStorageKeys(user.id);
+      setCurrentUser(user);
+      setAuthChecked(true);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // Load cloud data when user is authenticated
@@ -1799,7 +1785,7 @@ const AppWrapper = () => {
     if (!currentUser) return;
     setCloudData(undefined);
     setMigrationDone(false);
-    firestoreLoad().then(d => {
+    cloudLoad().then(d => {
       setCloudData(d || null);
       if (d) setMigrationDone(true);
     });
@@ -1809,7 +1795,7 @@ const AppWrapper = () => {
   if (!authChecked) return <AuthScreen loading={true} />;
 
   // Not logged in
-  if (!currentUser) return <AuthScreen onAuth={(user) => { initStorageKeys(user.uid); setCurrentUser(user); }} loading={false} />;
+  if (!currentUser) return <AuthScreen loading={false} />;
 
   // Loading cloud data
   if (cloudData === undefined && !migrationDone) {
@@ -1818,10 +1804,11 @@ const AppWrapper = () => {
 
   // No cloud data — show welcome/import screen
   if (cloudData === null && !migrationDone) {
-    return <WelcomeScreen userName={currentUser.displayName} onSkip={() => { setMigrationDone(true); setCloudData(null); }}
+    const userName = currentUser.user_metadata?.display_name || '';
+    return <WelcomeScreen userName={userName} onSkip={() => { setMigrationDone(true); setCloudData(null); }}
       onImport={(d) => {
         const migrated = migrateData(d);
-        firestoreSave(migrated);
+        cloudSave(migrated);
         setCloudData(migrated);
         setMigrationDone(true);
       }} />;
@@ -1878,38 +1865,8 @@ const App = ({ user, initialCloudData }) => {
 
   useEffect(() => {
     saveData(data);
-    if (user && _fbReady) firestoreSave(data);
+    if (user && CURRENT_UID) cloudSave(data);
   }, [data]);
-
-  // Real-time Firestore listener for cross-device sync
-  useEffect(() => {
-    if (!user || !_fbReady) return;
-    const doc = firestoreDocPath();
-    if (!doc) return;
-    const unsub = doc.onSnapshot({ includeMetadataChanges: false }, (snap) => {
-      if (!snap.exists) return;
-      const meta = snap.metadata;
-      // Only apply remote changes (not our own writes)
-      if (!meta.hasPendingWrites) {
-        try {
-          const remote = JSON.parse(snap.data().payload);
-          if (remote && remote.contacts) {
-            // Compare contact counts to detect real remote changes
-            setData(prev => {
-              const prevJson = JSON.stringify(prev);
-              const remoteJson = snap.data().payload;
-              if (prevJson !== remoteJson) {
-                console.log('[CRM] Synced from cloud (' + remote.contacts.length + ' contacts)');
-                return migrateData(remote);
-              }
-              return prev;
-            });
-          }
-        } catch(e) { console.warn('[CRM] Snapshot parse error:', e); }
-      }
-    });
-    return () => unsub();
-  }, [user]);
 
   // On first load, check if IDB has better data than localStorage
   useEffect(() => {
@@ -2120,14 +2077,13 @@ const App = ({ user, initialCloudData }) => {
           <button onClick={handleDownloadJSON} className={"px-3 py-2 rounded-lg text-sm font-medium transition-colors " + (backupIsStale ? "bg-amber-500 text-white hover:bg-amber-600" : "")} style={backupIsStale ? {} : {background: 'var(--bg-tertiary)', color: 'var(--text-secondary)'}} title={lastBackupDownload ? "Last downloaded: " + lastBackupDownload.toLocaleDateString() : "Never downloaded a backup"}>
             {backupIsStale ? '\u26A0\uFE0F Backup' : '\uD83D\uDCE5 Backup'}
           </button>
-          {_fbReady && <span className="sync-badge sync-online">{'\u2601'} Synced</span>}
-          {!_fbReady && <span className="sync-badge sync-offline">{'\uD83D\uDCBB'} Local Only</span>}
+          {CURRENT_UID && <span className="sync-badge sync-online">{'\u2601'} Synced</span>}
           <button onClick={() => setDarkMode(d => !d)} className="theme-toggle" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} />
           <button onClick={() => setShowShortcuts(true)} className="text-xs text-gray-400 hover:text-gray-600 cursor-pointer" title="Keyboard shortcuts"><span className="kbd">?</span></button>
           <button onClick={handleAddContact} className="px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90" style={{background: 'var(--accent)'}}>+ Add</button>
-          <button onClick={() => { if(confirm('Sign out?')) { _fbAuth.signOut(); } }}
+          <button onClick={() => { if(confirm('Sign out?')) { _sb.auth.signOut().then(() => window.location.reload()); } }}
             className="flex items-center gap-1" title="Sign out">
-            <span className="w-7 h-7 rounded-full flex items-center justify-content text-xs font-bold text-white" style={{background: 'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center'}}>{(user && user.displayName ? user.displayName[0] : user && user.email ? user.email[0] : 'U').toUpperCase()}</span>
+            <span className="w-7 h-7 rounded-full flex items-center justify-content text-xs font-bold text-white" style={{background: 'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center'}}>{(user && user.user_metadata?.display_name ? user.user_metadata.display_name[0] : user && user.email ? user.email[0] : 'U').toUpperCase()}</span>
           </button>
         </div>
         {backupIsStale && (
