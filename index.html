@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#3b82f6">
-<title>Bloom CRM</title>
+<title>Innergame CRM</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
@@ -1569,7 +1569,7 @@ const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdate
       </div>
       <div className="bg-white rounded-xl border p-4">
         <h3 className="font-semibold mb-2">About</h3>
-        <p className="text-sm text-gray-500">Bloom CRM v{STORAGE_VERSION}</p>
+        <p className="text-sm text-gray-500">Innergame CRM v{STORAGE_VERSION}</p>
         <p className="text-sm text-gray-500">Data stored locally in your browser. {contacts.length} contacts loaded.</p>
       </div>
     </div>
@@ -1645,18 +1645,20 @@ const AuthScreen = ({ onAuth, loading }) => {
   const handleForgotPassword = async () => {
     if (!email) { setError('Enter your email first'); return; }
     try {
-      const { error: resetErr } = await _sb.auth.resetPasswordForEmail(email);
+      const { error: resetErr } = await _sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname + '#type=recovery'
+      });
       if (resetErr) throw resetErr;
       setResetSent(true);
       setError('');
-    } catch(err) { setError('Could not send reset email. Check the address.'); }
+    } catch(err) { setError(err.message || 'Could not send reset email. Check the address.'); }
   };
 
   return (
     <div className="login-screen">
       <div className="login-card">
         <div style={{fontSize: '48px', marginBottom: '16px'}}>{'\uD83C\uDF31'}</div>
-        <h1 className="text-2xl font-bold mb-2" style={{color: 'var(--text-primary)'}}>Bloom CRM</h1>
+        <h1 className="text-2xl font-bold mb-2" style={{color: 'var(--text-primary)'}}>Innergame CRM</h1>
         <p className="text-sm mb-6" style={{color: 'var(--text-secondary)'}}>
           {mode === 'login' ? 'Sign in to your CRM' : 'Create your account'}
         </p>
@@ -1691,6 +1693,52 @@ const AuthScreen = ({ onAuth, loading }) => {
             </div>
           </form>
         )}
+      </div>
+      <div className="text-center text-xs mt-6" style={{color: 'var(--text-tertiary)'}}>
+        Developed by Innergame Consulting
+      </div>
+    </div>
+  );
+};
+
+const ResetPasswordScreen = ({ onDone }) => {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (password !== confirm) { setError('Passwords do not match'); return; }
+    setSaving(true);
+    try {
+      const { error: updErr } = await _sb.auth.updateUser({ password });
+      if (updErr) throw updErr;
+      // Clean the URL so the recovery hash is gone
+      window.history.replaceState({}, document.title, window.location.pathname);
+      onDone();
+    } catch(err) { setError(err.message || 'Could not update password'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div style={{fontSize: '48px', marginBottom: '16px'}}>{'\uD83D\uDD11'}</div>
+        <h1 className="text-2xl font-bold mb-2" style={{color: 'var(--text-primary)'}}>Set a new password</h1>
+        <p className="text-sm mb-6" style={{color: 'var(--text-secondary)'}}>Choose a new password for your account.</p>
+        <form onSubmit={handleSubmit}>
+          <input type="password" className="login-input" placeholder="New password" value={password}
+            onChange={e => setPassword(e.target.value)} autoComplete="new-password" autoFocus />
+          <input type="password" className="login-input" placeholder="Confirm new password" value={confirm}
+            onChange={e => setConfirm(e.target.value)} autoComplete="new-password" />
+          {error && <div className="login-error">{error}</div>}
+          <button type="submit" className="login-btn" disabled={saving || !password || !confirm}>
+            {saving ? 'Saving...' : 'Update password'}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -1762,6 +1810,7 @@ const AppWrapper = () => {
   const [authChecked, setAuthChecked] = useState(false);
   const [cloudData, setCloudData] = useState(undefined);
   const [migrationDone, setMigrationDone] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(() => window.location.hash.includes('type=recovery'));
 
   // Listen to Supabase auth state
   useEffect(() => {
@@ -1771,7 +1820,8 @@ const AppWrapper = () => {
       setCurrentUser(user);
       setAuthChecked(true);
     });
-    const { data: { subscription } } = _sb.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = _sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setIsRecovery(true);
       const user = session?.user || null;
       if (user) initStorageKeys(user.id);
       setCurrentUser(user);
@@ -1779,6 +1829,11 @@ const AppWrapper = () => {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // If we're in a password recovery flow, show the reset screen
+  if (isRecovery) {
+    return <ResetPasswordScreen onDone={() => { setIsRecovery(false); }} />;
+  }
 
   // Load cloud data when user is authenticated
   useEffect(() => {
@@ -2061,7 +2116,7 @@ const App = ({ user, initialCloudData }) => {
   return (
     <div className="flex h-screen" style={{background: 'var(--bg-primary)', color: 'var(--text-primary)'}}>
       <div className={'desktop-sidebar ' + (sidebarOpen ? 'w-56' : 'w-0') + ' border-r flex-shrink-0 transition-all overflow-hidden'} style={{background: 'var(--sidebar-bg)'}}>
-        <div className="p-4 border-b"><h1 className="text-lg font-bold" style={{color: 'var(--accent)'}}>Bloom CRM</h1></div>
+        <div className="p-4 border-b"><h1 className="text-lg font-bold" style={{color: 'var(--accent)'}}>Innergame CRM</h1></div>
         <nav className="p-3 space-y-1">{tabs.map(tab => (
           <div key={tab.id} className={'sidebar-item text-sm ' + (activeTab === tab.id ? 'active' : '')} onClick={() => setActiveTab(tab.id)}>
             <span>{tab.icon}</span><span>{tab.label}</span>
@@ -2121,7 +2176,12 @@ const App = ({ user, initialCloudData }) => {
           </div>
         )}
         <div className="flex flex-1 overflow-hidden">
-          <div className="main-content flex-1 overflow-y-auto p-6">{renderContent()}</div>
+          <div className="main-content flex-1 overflow-y-auto p-6">
+            {renderContent()}
+            <div className="app-footer text-center text-xs mt-8 pt-4 pb-2" style={{color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-light)'}}>
+              Developed by Innergame Consulting
+            </div>
+          </div>
           {selectedContact && <ContactDetail contact={selectedContact} onClose={() => setSelectedContact(null)} onUpdate={handleUpdateContact} stages={stages} onDelete={handleDeleteContact} cadence={cadence} />}
         </div>
       </div>
