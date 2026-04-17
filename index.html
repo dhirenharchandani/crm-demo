@@ -6,8 +6,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#3b82f6">
+<meta name="apple-mobile-web-app-title" content="Innergame CRM">
+<meta name="theme-color" content="#6366f1">
+<meta name="description" content="Innergame CRM — track contacts, pipelines and follow-ups.">
 <title>Innergame CRM</title>
+<!-- Inline SVG favicon (sprout emoji theme) -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B1%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366f1'/%3E%3Ctext x='50' y='72' font-size='64' text-anchor='middle'%3E%F0%9F%8C%B1%3C/text%3E%3C/svg%3E">
+<!-- Inline PWA manifest -->
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Innergame%20CRM%22%2C%22short_name%22%3A%22Innergame%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%236366f1%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%253D%2527http%253A%2F%2Fwww.w3.org%2F2000%2Fsvg%2527%2520viewBox%253D%25270%25200%2520100%2520100%2527%253E%253Crect%2520width%253D%2527100%2527%2520height%253D%2527100%2527%2520rx%253D%252722%2527%2520fill%253D%2527%25236366f1%2527%2F%253E%253Ctext%2520x%253D%252750%2527%2520y%253D%252772%2527%2520font-size%253D%252764%2527%2520text-anchor%253D%2527middle%2527%253E%25F0%259F%258C%25B1%253C%2Ftext%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
@@ -182,6 +189,15 @@
     -webkit-tap-highlight-color: transparent; }
   .mobile-tab.active { color: var(--accent); background: var(--accent-light); }
   .mobile-tab span:first-child { font-size: 18px; line-height: 1; }
+  .mobile-more-overlay { position: fixed; inset: 0; z-index: 55; background: var(--overlay); backdrop-filter: blur(4px); display: flex; align-items: flex-end; }
+  .mobile-more-sheet { background: var(--bg-secondary); border-top-left-radius: 16px; border-top-right-radius: 16px;
+    width: 100%; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px rgba(0,0,0,0.15);
+    animation: sheetUp 0.2s ease-out; max-height: 70vh; overflow-y: auto; }
+  .mobile-more-handle { width: 36px; height: 4px; background: var(--border); border-radius: 999px; margin: 0 auto 16px; }
+  .mobile-more-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 10px; cursor: pointer;
+    color: var(--text-primary); font-size: 15px; -webkit-tap-highlight-color: transparent; }
+  .mobile-more-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+  @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
   /* ─── Login Screen ─── */
   .login-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -201,8 +217,14 @@
     font-size: 10px; font-weight: 600; }
   .sync-online { background: #dcfce7; color: #16a34a; }
   .sync-offline { background: #fef3c7; color: #d97706; }
+  .sync-saving { background: #fef3c7; color: #d97706; }
+  .sync-error { background: #fee2e2; color: #dc2626; border: none; cursor: pointer; font-weight: 600; }
+  .sync-error:hover { background: #fecaca; }
   .dark .sync-online { background: #052e16; color: #86efac; }
   .dark .sync-offline { background: #451a03; color: #fcd34d; }
+  .dark .sync-saving { background: #451a03; color: #fcd34d; }
+  .dark .sync-error { background: #450a0a; color: #fca5a5; }
+  .dark .sync-error:hover { background: #7f1d1d; }
   .dark .login-input { background: #1e293b; border-color: #475569; color: #f1f5f9; }
 </style>
 </head>
@@ -227,6 +249,17 @@ const initStorageKeys = (uid) => {
   MASTER_VERSION_KEY = STORAGE_KEY + '-master-version';
   LAST_BACKUP_DOWNLOAD_KEY = STORAGE_KEY + '-last-backup-download';
   IDB_NAME = 'bloom-crm-' + uid + '-idb';
+  // When a real user signs in, purge any 'anonymous' keys left behind from the pre-auth render
+  if (uid && uid !== 'anonymous') {
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('bloom-crm-anonymous-')) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch(e) { console.warn('[CRM] Anonymous key cleanup failed:', e); }
+  }
 };
 // Initialize with placeholder until auth
 initStorageKeys('anonymous');
@@ -1577,9 +1610,22 @@ const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdate
 };
 
 // ─── Supabase Sync Layer ───
-// ─── Supabase Sync Layer ───
+// Tracks the most recent cloud save attempt so the UI can reflect state.
+// Values: 'idle' | 'saving' | 'saved' | 'error'
+let _cloudSaveStatus = { value: 'idle', listeners: new Set() };
+const setCloudSaveStatus = (v) => { _cloudSaveStatus.value = v; _cloudSaveStatus.listeners.forEach(fn => fn(v)); };
+const useCloudSaveStatus = () => {
+  const [status, setStatus] = useState(_cloudSaveStatus.value);
+  useEffect(() => {
+    _cloudSaveStatus.listeners.add(setStatus);
+    return () => _cloudSaveStatus.listeners.delete(setStatus);
+  }, []);
+  return status;
+};
+
 const cloudSave = async (data) => {
   if (!CURRENT_UID) return;
+  setCloudSaveStatus('saving');
   try {
     const { error } = await _sb.from('crm_data').upsert({
       user_id: CURRENT_UID,
@@ -1588,7 +1634,11 @@ const cloudSave = async (data) => {
     });
     if (error) throw error;
     console.log('[CRM] Cloud save OK (' + (data.contacts||[]).length + ' contacts)');
-  } catch(e) { console.error('[CRM] Cloud save failed:', e); }
+    setCloudSaveStatus('saved');
+  } catch(e) {
+    console.error('[CRM] Cloud save failed:', e);
+    setCloudSaveStatus('error');
+  }
 };
 
 const cloudLoad = async () => {
@@ -1607,17 +1657,22 @@ const AuthScreen = ({ onAuth, loading }) => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [info, setInfo] = useState(''); // non-error success message
   const [checking, setChecking] = useState(false);
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
   const [resetSent, setResetSent] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setInfo('');
     setChecking(true);
     try {
       if (mode === 'signup') {
-        if (password.length < 6) { setError('Password must be at least 6 characters'); setChecking(false); return; }
+        // Enforce stronger password (8+ chars, at least one letter & number)
+        if (password.length < 8) { setError('Password must be at least 8 characters'); setChecking(false); return; }
+        if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) { setError('Password needs at least one letter and one number'); setChecking(false); return; }
         const { data: signUpData, error: signUpErr } = await _sb.auth.signUp({
           email, password,
           options: { data: { display_name: name || '' } }
@@ -1627,8 +1682,7 @@ const AuthScreen = ({ onAuth, loading }) => {
           setError('');
           setResetSent(false);
           setChecking(false);
-          alert('Check your email to confirm your account, then sign in.');
-          setMode('login');
+          setConfirmationSent(true);
           return;
         }
       } else {
@@ -1636,7 +1690,12 @@ const AuthScreen = ({ onAuth, loading }) => {
         if (signInErr) throw signInErr;
       }
     } catch(err) {
-      const msg = err.message || 'Something went wrong';
+      // Make Supabase errors more user-friendly
+      let msg = err.message || 'Something went wrong';
+      if (/invalid login credentials/i.test(msg)) msg = 'Email or password is incorrect.';
+      else if (/user already registered/i.test(msg)) msg = 'An account with that email already exists. Try signing in.';
+      else if (/email not confirmed/i.test(msg)) msg = 'Please confirm your email first — check your inbox.';
+      else if (/rate limit/i.test(msg)) msg = 'Too many attempts. Please wait a moment and try again.';
       setError(msg);
     }
     setChecking(false);
@@ -1653,6 +1712,31 @@ const AuthScreen = ({ onAuth, loading }) => {
       setError('');
     } catch(err) { setError(err.message || 'Could not send reset email. Check the address.'); }
   };
+
+  // Post-signup "check your email" screen
+  if (confirmationSent) {
+    return (
+      <div className="login-screen">
+        <div className="login-card">
+          <div style={{fontSize: '48px', marginBottom: '16px'}}>{'\uD83D\uDCE7'}</div>
+          <h1 className="text-2xl font-bold mb-2" style={{color: 'var(--text-primary)'}}>Check your email</h1>
+          <p className="text-sm mb-4" style={{color: 'var(--text-secondary)'}}>
+            We sent a confirmation link to <strong style={{color:'var(--text-primary)'}}>{email}</strong>.
+            Click the link to activate your account, then return here to sign in.
+          </p>
+          <p className="text-xs mb-6" style={{color: 'var(--text-tertiary)'}}>
+            Didn't get it? Check your spam folder, or try signing up again with a different address.
+          </p>
+          <button onClick={() => { setConfirmationSent(false); setMode('login'); setPassword(''); }} className="login-btn">
+            Back to sign in
+          </button>
+        </div>
+        <div className="text-center text-xs mt-6" style={{color: 'var(--text-tertiary)'}}>
+          Developed by Innergame Consulting
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-screen">
@@ -1830,12 +1914,8 @@ const AppWrapper = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // If we're in a password recovery flow, show the reset screen
-  if (isRecovery) {
-    return <ResetPasswordScreen onDone={() => { setIsRecovery(false); }} />;
-  }
-
   // Load cloud data when user is authenticated
+  // NOTE: Must be declared BEFORE any conditional returns to satisfy Rules of Hooks
   useEffect(() => {
     if (!currentUser) return;
     setCloudData(undefined);
@@ -1845,6 +1925,11 @@ const AppWrapper = () => {
       if (d) setMigrationDone(true);
     });
   }, [currentUser]);
+
+  // If we're in a password recovery flow, show the reset screen
+  if (isRecovery) {
+    return <ResetPasswordScreen onDone={() => { setIsRecovery(false); }} />;
+  }
 
   // Waiting for auth check
   if (!authChecked) return <AuthScreen loading={true} />;
@@ -1878,12 +1963,14 @@ const App = ({ user, initialCloudData }) => {
     if (initialCloudData) return migrateData(initialCloudData);
     return loadData();
   });
+  const cloudStatus = useCloudSaveStatus();
   const [activeTab, setActiveTab] = useState('today');
   const [selectedContact, setSelectedContact] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showRestoreBanner, setShowRestoreBanner] = useState(true);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [toast, setToast] = useState(null);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     const stored = localStorage.getItem('bloom-crm-theme');
     if (stored) return stored === 'dark';
@@ -1913,14 +2000,28 @@ const App = ({ user, initialCloudData }) => {
     return stored ? new Date(stored) : null;
   });
   const backupIsStale = useMemo(() => {
-    if (!lastBackupDownload) return true;
+    // Don't nag users who haven't added any contacts yet — nothing to back up
+    if (!(data.contacts && data.contacts.length > 0)) return false;
+    if (!lastBackupDownload) {
+      // Grace period: if user just started, don't show warning until they've had 3 days
+      const createdAt = (data.contacts[0] && data.contacts[0].createdAt) ? new Date(data.contacts[0].createdAt) : null;
+      if (createdAt) {
+        const daysSinceStart = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceStart < BACKUP_REMINDER_DAYS) return false;
+      }
+      return true;
+    }
     const diffDays = (Date.now() - lastBackupDownload.getTime()) / (1000 * 60 * 60 * 24);
     return diffDays > BACKUP_REMINDER_DAYS;
-  }, [lastBackupDownload]);
+  }, [lastBackupDownload, data.contacts]);
 
+  // Save locally immediately; debounce cloud save to avoid collisions on rapid edits
   useEffect(() => {
     saveData(data);
-    if (user && CURRENT_UID) cloudSave(data);
+    if (user && CURRENT_UID) {
+      const handle = setTimeout(() => cloudSave(data), 1500);
+      return () => clearTimeout(handle);
+    }
   }, [data]);
 
   // On first load, check if IDB has better data than localStorage
@@ -2077,11 +2178,16 @@ const App = ({ user, initialCloudData }) => {
     } catch(e) { alert('Failed: '+e.message); }
   };
   const handleAddContact = () => {
-    const nc = { id: Math.random().toString(36).substr(2,9), name: 'New Contact', company: '', stage: stages[0], email: '', phone: '', source: 'Direct',
+    const nc = { id: Math.random().toString(36).substr(2,9), name: '', company: '', stage: stages[0], email: '', phone: '', source: 'Direct',
       dealValue: 0, monthlyRevenue: 0, priority: 'medium', lastContactDate: today(), nextFollowUp: calculateNextFollowUp(stages[0], cadence),
       notes: '', tags: [], interactions: [], notesTimeline: [], createdAt: new Date().toISOString(), stageChangedAt: new Date().toISOString() };
     setData(prev => ({...prev, contacts: [nc, ...prev.contacts]}));
     setSelectedContact(nc);
+    // Focus the name input after the detail panel animates in
+    setTimeout(() => {
+      const nameInput = document.querySelector('.detail-panel input[type="text"]');
+      if (nameInput) { nameInput.focus(); nameInput.select(); }
+    }, 200);
   };
 
   const tabs = [
@@ -2132,13 +2238,28 @@ const App = ({ user, initialCloudData }) => {
           <button onClick={handleDownloadJSON} className={"px-3 py-2 rounded-lg text-sm font-medium transition-colors " + (backupIsStale ? "bg-amber-500 text-white hover:bg-amber-600" : "")} style={backupIsStale ? {} : {background: 'var(--bg-tertiary)', color: 'var(--text-secondary)'}} title={lastBackupDownload ? "Last downloaded: " + lastBackupDownload.toLocaleDateString() : "Never downloaded a backup"}>
             {backupIsStale ? '\u26A0\uFE0F Backup' : '\uD83D\uDCE5 Backup'}
           </button>
-          {CURRENT_UID && <span className="sync-badge sync-online">{'\u2601'} Synced</span>}
+          {CURRENT_UID && cloudStatus === 'saving' && <span className="sync-badge sync-saving">{'\uD83D\uDD04'} Saving...</span>}
+          {CURRENT_UID && cloudStatus === 'error' && <button onClick={() => cloudSave(data)} className="sync-badge sync-error" title="Sync failed — click to retry">{'\u26A0\uFE0F'} Sync failed</button>}
+          {CURRENT_UID && (cloudStatus === 'saved' || cloudStatus === 'idle') && <span className="sync-badge sync-online">{'\u2601'} Synced</span>}
           <button onClick={() => setDarkMode(d => !d)} className="theme-toggle" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} />
           <button onClick={() => setShowShortcuts(true)} className="text-xs text-gray-400 hover:text-gray-600 cursor-pointer" title="Keyboard shortcuts"><span className="kbd">?</span></button>
           <button onClick={handleAddContact} className="px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90" style={{background: 'var(--accent)'}}>+ Add</button>
-          <button onClick={() => { if(confirm('Sign out?')) { _sb.auth.signOut().then(() => window.location.reload()); } }}
+          <button onClick={() => {
+              if(!confirm('Sign out? Your data stays saved in the cloud.')) return;
+              // Clear per-user localStorage & IDB so no trace remains for the next user of this browser
+              try {
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                  const k = localStorage.key(i);
+                  if (k && (k.startsWith('bloom-crm-' + CURRENT_UID + '-') || k.startsWith('bloom-crm-anonymous-'))) keysToRemove.push(k);
+                }
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+                if (window.indexedDB && IDB_NAME) { indexedDB.deleteDatabase(IDB_NAME); }
+              } catch(e) { console.warn('[CRM] Signout cleanup failed:', e); }
+              _sb.auth.signOut().finally(() => window.location.reload());
+            }}
             className="flex items-center gap-1" title="Sign out">
-            <span className="w-7 h-7 rounded-full flex items-center justify-content text-xs font-bold text-white" style={{background: 'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center'}}>{(user && user.user_metadata?.display_name ? user.user_metadata.display_name[0] : user && user.email ? user.email[0] : 'U').toUpperCase()}</span>
+            <span className="w-7 h-7 rounded-full text-xs font-bold text-white" style={{background: 'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center'}}>{(user && user.user_metadata?.display_name ? user.user_metadata.display_name[0] : user && user.email ? user.email[0] : 'U').toUpperCase()}</span>
           </button>
         </div>
         {backupIsStale && (
@@ -2188,18 +2309,34 @@ const App = ({ user, initialCloudData }) => {
       {/* Mobile bottom nav */}
       <div className="mobile-bottom-nav">
         <div className="flex justify-around w-full">
-          {tabs.slice(0, 6).map(tab => (
+          {tabs.slice(0, 5).map(tab => (
             <div key={tab.id} className={'mobile-tab ' + (activeTab === tab.id ? 'active' : '')} onClick={() => setActiveTab(tab.id)}>
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
             </div>
           ))}
-          <div className={'mobile-tab ' + (['roi','stagnation','import','settings','digest'].includes(activeTab) ? 'active' : '')} onClick={() => setActiveTab(activeTab === 'settings' ? 'today' : 'settings')}>
-            <span>{'\u2699\uFE0F'}</span>
+          <div className={'mobile-tab ' + (['digest','roi','stagnation','import','settings'].includes(activeTab) || mobileMoreOpen ? 'active' : '')} onClick={() => setMobileMoreOpen(v => !v)}>
+            <span>{'\u2261'}</span>
             <span>More</span>
           </div>
         </div>
       </div>
+      {/* Mobile "More" sheet */}
+      {mobileMoreOpen && (
+        <div className="mobile-more-overlay" onClick={() => setMobileMoreOpen(false)}>
+          <div className="mobile-more-sheet" onClick={e => e.stopPropagation()}>
+            <div className="mobile-more-handle"></div>
+            <div className="text-xs font-semibold mb-2" style={{color:'var(--text-tertiary)',textTransform:'uppercase',letterSpacing:'0.05em'}}>More views</div>
+            {tabs.slice(5).map(tab => (
+              <div key={tab.id} className={'mobile-more-item ' + (activeTab === tab.id ? 'active' : '')}
+                   onClick={() => { setActiveTab(tab.id); setMobileMoreOpen(false); }}>
+                <span style={{fontSize:'18px'}}>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Keyboard shortcut cheat sheet */}
       {showShortcuts && (
         <div className="shortcut-overlay" onClick={() => setShowShortcuts(false)}>
@@ -2233,7 +2370,30 @@ const App = ({ user, initialCloudData }) => {
   );
 };
 
-ReactDOM.render(<AppWrapper />, document.getElementById('root'));
+// ─── Error Boundary (prevents one broken component from blanking the whole app) ───
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, err: null }; }
+  static getDerivedStateFromError(err) { return { hasError: true, err }; }
+  componentDidCatch(err, info) { console.error('[CRM] React error:', err, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'20px',background:'var(--bg-primary)',color:'var(--text-primary)'}}>
+          <div style={{maxWidth:'500px',textAlign:'center',background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:'16px',padding:'40px'}}>
+            <div style={{fontSize:'48px',marginBottom:'16px'}}>{'\u26A0\uFE0F'}</div>
+            <h1 style={{fontSize:'20px',fontWeight:700,marginBottom:'12px'}}>Something went wrong</h1>
+            <p style={{fontSize:'14px',color:'var(--text-secondary)',marginBottom:'20px'}}>Your data is safe. Please reload the page to continue.</p>
+            <div style={{fontSize:'11px',color:'var(--text-tertiary)',marginBottom:'20px',fontFamily:'monospace',wordBreak:'break-word'}}>{this.state.err && this.state.err.message}</div>
+            <button onClick={() => window.location.reload()} style={{padding:'12px 24px',background:'var(--accent)',color:'white',border:'none',borderRadius:'8px',fontWeight:600,cursor:'pointer'}}>Reload app</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+ReactDOM.render(<ErrorBoundary><AppWrapper /></ErrorBoundary>, document.getElementById('root'));
 </script>
 </body>
 </html>
