@@ -1946,9 +1946,9 @@ const AppWrapper = () => {
   if (cloudData === null && !migrationDone) {
     const userName = currentUser.user_metadata?.display_name || '';
     return <WelcomeScreen userName={userName} onSkip={() => { setMigrationDone(true); setCloudData(null); }}
-      onImport={(d) => {
+      onImport={async (d) => {
         const migrated = migrateData(d);
-        cloudSave(migrated);
+        await cloudSave(migrated);
         setCloudData(migrated);
         setMigrationDone(true);
       }} />;
