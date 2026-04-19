@@ -1794,7 +1794,8 @@ const ResetPasswordScreen = ({ onDone }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) { setError('Password needs at least one letter and one number'); return; }
     if (password !== confirm) { setError('Passwords do not match'); return; }
     setSaving(true);
     try {
@@ -1840,8 +1841,11 @@ const WelcomeScreen = ({ onImport, onSkip, userName }) => {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
+        if (!data || typeof data !== 'object' || !Array.isArray(data.contacts)) {
+          throw new Error('Backup file is missing a contacts array');
+        }
         onImport(data);
-      } catch(err) { alert('Invalid JSON file'); setImporting(false); }
+      } catch(err) { alert('Invalid backup file: ' + (err.message || 'unknown error')); setImporting(false); }
     };
     reader.readAsText(file);
   };
@@ -2016,10 +2020,15 @@ const App = ({ user, initialCloudData }) => {
   }, [lastBackupDownload, data.contacts]);
 
   // Save locally immediately; debounce cloud save to avoid collisions on rapid edits
+  const pendingCloudData = useRef(null);
   useEffect(() => {
     saveData(data);
     if (user && CURRENT_UID) {
-      const handle = setTimeout(() => cloudSave(data), 1500);
+      pendingCloudData.current = data;
+      const handle = setTimeout(() => {
+        cloudSave(data);
+        pendingCloudData.current = null;
+      }, 1500);
       return () => clearTimeout(handle);
     }
   }, [data]);
@@ -2034,19 +2043,55 @@ const App = ({ user, initialCloudData }) => {
     });
   }, []);
 
-  // Save to IDB + localStorage on tab close / navigate away
+  // Save to IDB + localStorage on tab close / navigate away, and flush any pending cloud save
   useEffect(() => {
     const handleBeforeUnload = () => {
       try {
         const json = JSON.stringify(data);
         localStorage.setItem(STORAGE_KEY, json);
-        // navigator.sendBeacon not suitable for localStorage but IDB save is async — trigger it
         idbSave(data);
+        // Flush pending debounced cloud save using sendBeacon for reliability
+        if (user && CURRENT_UID && pendingCloudData.current) {
+          try {
+            const body = JSON.stringify({
+              user_id: CURRENT_UID,
+              payload: pendingCloudData.current,
+              updated_at: new Date().toISOString()
+            });
+            const url = SUPABASE_URL + '/rest/v1/crm_data';
+            const blob = new Blob([body], { type: 'application/json' });
+            // sendBeacon cannot add auth headers; fall back to sync-ish fetch keepalive
+            fetch(url, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': 'Bearer ' + (_sb.auth.session?.access_token || SUPABASE_ANON_KEY),
+                'Content-Type': 'application/json',
+                'Prefer': 'resolution=merge-duplicates'
+              },
+              body,
+              keepalive: true
+            }).catch(() => {});
+          } catch(e) { /* best-effort */ }
+        }
       } catch(e) { console.warn('[CRM] beforeunload save failed', e); }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [data]);
+  }, [data, user]);
+
+  // Detect sign-out from another tab and reload so this tab doesn't keep stale state
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (!user) return;
+      // Supabase stores session under a key like 'sb-<ref>-auth-token'
+      if (e.key && e.key.startsWith('sb-') && e.key.endsWith('-auth-token') && !e.newValue) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [user]);
 
   // Auto-backup every 30 minutes
   const AUTO_BACKUP_KEY = STORAGE_KEY + '-auto-timed-';
