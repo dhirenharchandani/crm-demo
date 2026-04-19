@@ -1790,6 +1790,40 @@ const ResetPasswordScreen = ({ onDone }) => {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+
+  // Establish the recovery session before letting the user submit.
+  // Supabase email links can use either: (a) implicit flow with #access_token&type=recovery
+  // in the hash, or (b) PKCE flow with ?code=xxx in the search string.
+  // The supabase-js client auto-detects both IF we give it a tick, but on some
+  // mobile browsers the page is rendered before that resolves — leading to
+  // "Auth session missing!" on submit. This effect waits for the session.
+  useEffect(() => {
+    let cancelled = false;
+    const establishSession = async () => {
+      // First try to find an existing session
+      const { data: { session } } = await _sb.auth.getSession();
+      if (session) { if (!cancelled) setSessionReady(true); return; }
+      // PKCE flow: ?code=... needs to be exchanged
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      if (code) {
+        try {
+          await _sb.auth.exchangeCodeForSession(window.location.href);
+        } catch (e) { console.warn('[CRM] exchangeCodeForSession failed:', e); }
+        const { data: { session: s2 } } = await _sb.auth.getSession();
+        if (s2 && !cancelled) { setSessionReady(true); return; }
+      }
+      // Implicit flow: supabase-js auto-parses the hash; subscribe to the PASSWORD_RECOVERY event
+      const { data: { subscription } } = _sb.auth.onAuthStateChange((event, sess) => {
+        if (sess && !cancelled) setSessionReady(true);
+      });
+      // Safety: if nothing resolves within 5s, let the user proceed (maybe we'll catch it on submit)
+      setTimeout(() => { if (!cancelled) setSessionReady(true); subscription.unsubscribe(); }, 5000);
+    };
+    establishSession();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1799,6 +1833,11 @@ const ResetPasswordScreen = ({ onDone }) => {
     if (password !== confirm) { setError('Passwords do not match'); return; }
     setSaving(true);
     try {
+      // Double-check we have a session; if not, try to recover it one more time
+      const { data: { session } } = await _sb.auth.getSession();
+      if (!session) {
+        throw new Error('Your reset link has expired or was already used. Please request a new password reset email.');
+      }
       const { error: updErr } = await _sb.auth.updateUser({ password });
       if (updErr) throw updErr;
       // Clean the URL so the recovery hash is gone
@@ -1815,13 +1854,14 @@ const ResetPasswordScreen = ({ onDone }) => {
         <h1 className="text-2xl font-bold mb-2" style={{color: 'var(--text-primary)'}}>Set a new password</h1>
         <p className="text-sm mb-6" style={{color: 'var(--text-secondary)'}}>Choose a new password for your account.</p>
         <form onSubmit={handleSubmit}>
-          <input type="password" className="login-input" placeholder="New password" value={password}
+          <input type="password" className="login-input" placeholder="New password (8+ chars, letter + number)" value={password}
             onChange={e => setPassword(e.target.value)} autoComplete="new-password" autoFocus />
           <input type="password" className="login-input" placeholder="Confirm new password" value={confirm}
             onChange={e => setConfirm(e.target.value)} autoComplete="new-password" />
           {error && <div className="login-error">{error}</div>}
-          <button type="submit" className="login-btn" disabled={saving || !password || !confirm}>
-            {saving ? 'Saving...' : 'Update password'}
+          {!sessionReady && !error && <div className="text-xs mb-2" style={{color:'var(--text-tertiary)'}}>Verifying reset link...</div>}
+          <button type="submit" className="login-btn" disabled={saving || !sessionReady || !password || !confirm}>
+            {saving ? 'Saving...' : !sessionReady ? 'Please wait...' : 'Update password'}
           </button>
         </form>
       </div>
