@@ -1974,7 +1974,7 @@ const App = ({ user, initialCloudData }) => {
   const [darkMode, setDarkMode] = useState(() => {
     const stored = localStorage.getItem('bloom-crm-theme');
     if (stored) return stored === 'dark';
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return false; // default to light mode; users can toggle to dark
   });
 
   useEffect(() => {
