@@ -32,10 +32,35 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
 <!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- Sentry browser SDK for error monitoring -->
+<script src="https://browser.sentry-cdn.com/7.119.0/bundle.min.js" crossorigin="anonymous"></script>
 <script>
   const SUPABASE_URL = 'https://gdtiqxqtfyefsqhofili.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_ILSvvQ9CdTdezM1-yRaSMQ_QSzWgyb8';
   const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Initialize Sentry as early as possible so bootstrap errors are captured
+  if (window.Sentry) {
+    Sentry.init({
+      dsn: 'https://02b1e3829d72893309f490b800233dec@o4511252877148160.ingest.us.sentry.io/4511252884619264',
+      release: 'innergame-crm@' + (document.documentElement.dataset.build || 'unknown'),
+      environment: (location.hostname === 'crm.myinnergame.com' ? 'production' : 'dev'),
+      // Keep the sample rate low on free tier (5k events/mo)
+      sampleRate: 1.0,
+      tracesSampleRate: 0.0, // no performance tracing for now
+      // Don't send requests from localhost to avoid burning quota during dev
+      beforeSend(event) {
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return null;
+        return event;
+      },
+      // Ignore noisy errors
+      ignoreErrors: [
+        'ResizeObserver loop limit exceeded',
+        'ResizeObserver loop completed with undelivered notifications',
+        'Non-Error promise rejection captured',
+      ],
+    });
+  }
 </script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -1783,6 +1808,9 @@ const cloudSave = async (data) => {
   } catch(e) {
     console.error('[CRM] Cloud save failed:', e);
     setCloudSaveStatus('error');
+    if (window.Sentry) {
+      Sentry.withScope(s => { s.setTag('operation', 'cloud_save'); Sentry.captureException(e); });
+    }
   }
 };
 
@@ -2098,6 +2126,7 @@ const AppWrapper = () => {
     _sb.auth.getSession().then(({ data: { session } }) => {
       const user = session?.user || null;
       if (user) initStorageKeys(user.id);
+      if (window.Sentry) Sentry.setUser(user ? { id: user.id, email: user.email } : null);
       setCurrentUser(user);
       setAuthChecked(true);
     });
@@ -2105,6 +2134,7 @@ const AppWrapper = () => {
       if (event === 'PASSWORD_RECOVERY') setIsRecovery(true);
       const user = session?.user || null;
       if (user) initStorageKeys(user.id);
+      if (window.Sentry) Sentry.setUser(user ? { id: user.id, email: user.email } : null);
       setCurrentUser(user);
       setAuthChecked(true);
     });
@@ -2823,7 +2853,17 @@ const Icon = ({ name, size = 18, className = '', style = {} }) => {
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, err: null }; }
   static getDerivedStateFromError(err) { return { hasError: true, err }; }
-  componentDidCatch(err, info) { console.error('[CRM] React error:', err, info); }
+  componentDidCatch(err, info) {
+    console.error('[CRM] React error:', err, info);
+    // Report to Sentry if available
+    if (window.Sentry) {
+      Sentry.withScope(scope => {
+        scope.setExtras({ componentStack: info && info.componentStack });
+        scope.setTag('error_boundary', 'root');
+        Sentry.captureException(err);
+      });
+    }
+  }
   render() {
     if (this.state.hasError) {
       return (
