@@ -117,7 +117,7 @@ const STAGE_COLORS = {
 
 const FALLBACK_COLORS = ['#6366f1','#ec4899','#f97316','#84cc16','#0ea5e9','#a855f7','#14b8a6','#f43f5e','#eab308','#64748b'];
 
-const STAGNATION = {
+const DEFAULT_STAGNATION = {
   'New Lead': 14, 'Contacted': 10, 'Qualified': 14,
   'Proposal Sent': 21, 'Negotiation': 14,
   'Closed Won': 90, 'Closed Lost': 90, default: 30
@@ -198,6 +198,7 @@ const migrateData = (data) => {
   // accidentally saved empty collections to the cloud.
   if (!Array.isArray(data.stages) || data.stages.length === 0) data.stages = [...DEFAULT_STAGES];
   if (!data.cadence || typeof data.cadence !== 'object' || Object.keys(data.cadence).length === 0) data.cadence = {...DEFAULT_CADENCE};
+  if (!data.stagnation || typeof data.stagnation !== 'object' || Object.keys(data.stagnation).length === 0) data.stagnation = {...DEFAULT_STAGNATION};
   const cad = data.cadence;
   const t = today();
   data.contacts = (data.contacts || []).map(c => {
@@ -1143,10 +1144,11 @@ const SourceROIView = ({ contacts }) => {
 };
 
 // ─── StagnationView ───
-const StagnationView = ({ contacts, stages, onSelectContact }) => {
+const StagnationView = ({ contacts, stages, stagnation, onSelectContact }) => {
+  const stag = stagnation || DEFAULT_STAGNATION;
   const stagnant = contacts.filter(c => {
     if (!c.lastContactDate) return true;
-    const threshold = STAGNATION[c.stage] || STAGNATION.default;
+    const threshold = stag[c.stage] || stag.default || DEFAULT_STAGNATION.default;
     return daysBetween(c.lastContactDate, today()) > threshold;
   }).sort((a, b) => {
     const dA = a.lastContactDate ? daysBetween(a.lastContactDate, today()) : 999;
@@ -1156,11 +1158,11 @@ const StagnationView = ({ contacts, stages, onSelectContact }) => {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-2">Stagnation Alerts</h1>
-      <p className="text-gray-500 text-sm mb-4">Contacts that haven't been touched beyond their stage threshold.</p>
+      <p className="text-gray-500 text-sm mb-4">Contacts that haven't been touched beyond their stage threshold. Tune thresholds in Settings → Stagnation.</p>
       {stagnant.length === 0 ? <div className="text-center text-gray-400 py-12">No stagnant contacts. Great engagement!</div> : (
         <div className="space-y-2">{stagnant.map(c => {
           const days = c.lastContactDate ? daysBetween(c.lastContactDate, today()) : null;
-          const threshold = STAGNATION[c.stage] || STAGNATION.default;
+          const threshold = stag[c.stage] || stag.default || DEFAULT_STAGNATION.default;
           return (
             <div key={c.id} className="bg-white rounded-lg p-3 border flex justify-between items-center cursor-pointer hover:bg-gray-50 border-l-4 border-l-orange-400" onClick={() => onSelectContact(c)}>
               <div><div className="font-medium">{c.name}</div><div className="text-sm text-gray-500">{c.stage}{c.company ? ' \u00B7 '+c.company : ''}</div></div>
@@ -1338,8 +1340,33 @@ const CadenceEditor = ({ stages, cadence, onUpdate }) => {
   );
 };
 
+// ─── StagnationEditor ───
+const StagnationEditor = ({ stages, stagnation, onUpdate }) => {
+  const stgs = stages || DEFAULT_STAGES;
+  const stag = stagnation || DEFAULT_STAGNATION;
+  const handleChange = (stage, value) => {
+    const v = parseInt(value);
+    if (!Number.isFinite(v) || v <= 0) return;
+    onUpdate({ ...stag, [stage]: v });
+  };
+  return (
+    <div>
+      <h3 className="font-semibold mb-2">Stagnation Thresholds (days)</h3>
+      <p className="text-sm text-gray-500 mb-3">After how many days without contact a lead is flagged as stagnant on the Stagnation tab.</p>
+      <div className="space-y-2">{stgs.map(stage => (
+        <div key={stage} className="flex items-center gap-3 bg-gray-50 rounded-lg p-2">
+          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: getStageColor(stage)}}></div>
+          <span className="flex-1 text-sm">{stage}</span>
+          <input type="number" min="1" max="365" value={stag[stage] || DEFAULT_STAGNATION[stage] || DEFAULT_STAGNATION.default} onChange={e => handleChange(stage, e.target.value)} className="w-20 text-center text-sm" />
+          <span className="text-xs text-gray-400">days</span>
+        </div>
+      ))}</div>
+    </div>
+  );
+};
+
 // ─── SettingsView ───
-const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdateCadence, contacts, onExport, onRestoreBackup, onDownloadJSON, onRestoreFile, onRestorePreUpdate }) => {
+const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdateCadence, stagnation, onUpdateStagnation, contacts, onExport, onRestoreBackup, onDownloadJSON, onRestoreFile, onRestorePreUpdate }) => {
   const fileRef = useRef();
   const preUpdateKeys = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -1350,6 +1377,9 @@ const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdate
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <div className="bg-white rounded-xl border p-4 mb-6"><StageManager stages={stages} onUpdate={onUpdateStages} onRenameStage={onRenameStage} /></div>
+      <div className="bg-white rounded-xl border p-4 mb-6"><CadenceEditor stages={stages} cadence={cadence} onUpdate={onUpdateCadence} /></div>
+      <div className="bg-white rounded-xl border p-4 mb-6"><StagnationEditor stages={stages} stagnation={stagnation} onUpdate={onUpdateStagnation} /></div>
       <div className="bg-white rounded-xl border p-4 mb-6">
         <h3 className="font-semibold mb-3">Export & Backup</h3>
         <div className="flex gap-3 flex-wrap">
@@ -1944,6 +1974,7 @@ const App = ({ user, initialCloudData }) => {
   const contacts = data.contacts || [];
   const stages = data.stages || DEFAULT_STAGES;
   const cadence = data.cadence || DEFAULT_CADENCE;
+  const stagnation = data.stagnation || DEFAULT_STAGNATION;
   const [lastAutoBackup, setLastAutoBackup] = useState(null);
   const [lastBackupDownload, setLastBackupDownload] = useState(() => {
     const stored = localStorage.getItem(LAST_BACKUP_DOWNLOAD_KEY);
@@ -2143,6 +2174,9 @@ const App = ({ user, initialCloudData }) => {
       return {...prev, cadence: nc, contacts: updatedContacts};
     });
   };
+  const handleUpdateStagnation = (ns) => {
+    setData(prev => ({...prev, stagnation: ns}));
+  };
   const handleBatchImport = (nc) => { setData(prev => ({...prev, contacts: [...prev.contacts, ...nc]})); };
   const handleExport = () => exportContactsToCSV(contacts);
   const handleRestoreFromBackup = () => {
@@ -2232,9 +2266,9 @@ const App = ({ user, initialCloudData }) => {
       case 'followups': return <FollowUpsView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} cadence={cadence} />;
       case 'digest': return <WeeklyDigestView contacts={contacts} stages={stages} />;
       case 'roi': return <SourceROIView contacts={contacts} />;
-      case 'stagnation': return <StagnationView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} />;
+      case 'stagnation': return <StagnationView contacts={contacts} stages={stages} stagnation={stagnation} onSelectContact={setSelectedContact} />;
       case 'import': return <CSVImportView stages={stages} onImport={handleBatchImport} />;
-      case 'settings': return <SettingsView stages={stages} onUpdateStages={handleUpdateStages} onRenameStage={handleRenameStage} cadence={cadence} onUpdateCadence={handleUpdateCadence} contacts={contacts} onExport={handleExport} onRestoreBackup={handleRestoreFromBackup} onDownloadJSON={handleDownloadJSON} onRestoreFile={handleRestoreFromFile} onRestorePreUpdate={handleRestorePreUpdate} />;
+      case 'settings': return <SettingsView stages={stages} onUpdateStages={handleUpdateStages} onRenameStage={handleRenameStage} cadence={cadence} onUpdateCadence={handleUpdateCadence} stagnation={stagnation} onUpdateStagnation={handleUpdateStagnation} contacts={contacts} onExport={handleExport} onRestoreBackup={handleRestoreFromBackup} onDownloadJSON={handleDownloadJSON} onRestoreFile={handleRestoreFromFile} onRestorePreUpdate={handleRestorePreUpdate} />;
       default: return <DashboardView contacts={contacts} stages={stages} />;
     }
   };
