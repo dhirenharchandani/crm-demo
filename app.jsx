@@ -1709,6 +1709,33 @@ const useCloudSaveStatus = () => {
   return status;
 };
 
+// Supabase/PostgREST returns plain objects {code, details, hint, message} on
+// failure. Wrap them as a proper Error so Sentry can stringify them properly
+// and we can attach the raw fields as context for debugging.
+const reportCloudError = (op, raw, extras) => {
+  const err = new Error('[' + op + '] ' + (raw && raw.message ? raw.message : 'unknown Supabase error'));
+  if (raw && raw.code) err.code = raw.code;
+  if (raw && raw.details) err.details = raw.details;
+  if (raw && raw.hint) err.hint = raw.hint;
+  if (raw && raw.stack) err.stack = raw.stack;
+  console.error('[CRM] ' + op + ' failed:', { code: raw && raw.code, message: raw && raw.message, details: raw && raw.details, hint: raw && raw.hint });
+  if (window.Sentry) {
+    Sentry.withScope(scope => {
+      scope.setTag('operation', op);
+      if (raw && raw.code) scope.setTag('pg_code', raw.code);
+      scope.setContext('supabase_error', {
+        code: (raw && raw.code) || null,
+        message: (raw && raw.message) || null,
+        details: (raw && raw.details) || null,
+        hint: (raw && raw.hint) || null,
+      });
+      if (extras) scope.setContext('extras', extras);
+      Sentry.captureException(err);
+    });
+  }
+  return err;
+};
+
 const cloudSave = async (data) => {
   if (!CURRENT_UID) return;
   setCloudSaveStatus('saving');
@@ -1718,16 +1745,21 @@ const cloudSave = async (data) => {
       payload: data,
       updated_at: new Date().toISOString()
     });
-    if (error) throw error;
+    if (error) {
+      reportCloudError('cloud_save', error, {
+        uid_prefix: CURRENT_UID ? CURRENT_UID.slice(0, 8) : null,
+        contact_count: (data.contacts || []).length,
+      });
+      setCloudSaveStatus('error');
+      return;
+    }
     try { LAST_SAVED_PAYLOAD_JSON = JSON.stringify(data); } catch(_) { LAST_SAVED_PAYLOAD_JSON = null; }
     console.log('[CRM] Cloud save OK (' + (data.contacts||[]).length + ' contacts)');
     setCloudSaveStatus('saved');
   } catch(e) {
-    console.error('[CRM] Cloud save failed:', e);
+    // Network / runtime errors (not PostgREST response errors)
+    reportCloudError('cloud_save_network', { message: e && e.message ? e.message : String(e), stack: e && e.stack });
     setCloudSaveStatus('error');
-    if (window.Sentry) {
-      Sentry.withScope(s => { s.setTag('operation', 'cloud_save'); Sentry.captureException(e); });
-    }
   }
 };
 
@@ -1736,9 +1768,15 @@ const cloudLoad = async () => {
   try {
     const { data, error } = await _sb.from('crm_data').select('payload').eq('user_id', CURRENT_UID).single();
     if (error && error.code === 'PGRST116') return null; // no row found
-    if (error) throw error;
+    if (error) {
+      reportCloudError('cloud_load', error, { uid_prefix: CURRENT_UID.slice(0, 8) });
+      return null;
+    }
     return data ? data.payload : null;
-  } catch(e) { console.error('[CRM] Cloud load failed:', e); return null; }
+  } catch(e) {
+    reportCloudError('cloud_load_network', { message: e && e.message ? e.message : String(e), stack: e && e.stack });
+    return null;
+  }
 };
 
 // ─── Auth Wrapper & Login/Signup Screen ───
