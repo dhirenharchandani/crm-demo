@@ -670,9 +670,10 @@ const Sparkline = ({ values, color = '#3b82f6', width = 120, height = 32, fill =
 };
 
 // ─── DashboardView ───
-const DashboardView = ({ contacts, stages }) => {
+const DashboardView = ({ contacts, stages, stagnation, onShowStagnant }) => {
   const stgs = stages || DEFAULT_STAGES;
   const totalContacts = contacts.length;
+  const stagnantCount = contacts.filter(c => isStagnant(c, stagnation)).length;
   const totalDealValue = contacts.reduce((s, c) => s + (c.dealValue || 0), 0);
   const weightedValue = contacts.reduce((s, c) => s + (c.dealValue || 0) * getStageProbability(c.stage), 0);
   const overdue = contacts.filter(c => c.nextFollowUp && c.nextFollowUp < today()).length;
@@ -737,7 +738,18 @@ const DashboardView = ({ contacts, stages }) => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+
+      {stagnantCount > 0 && (
+        <button onClick={onShowStagnant} className="w-full mb-4 flex items-center justify-between gap-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg px-4 py-2.5 text-sm transition-colors">
+          <span className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+            <span className="font-medium">{stagnantCount} stagnant contact{stagnantCount === 1 ? '' : 's'}</span>
+            <span className="text-red-500 hidden sm:inline">{'\u00B7'} no recent touch beyond threshold</span>
+          </span>
+          <span className="text-xs font-medium">View {'\u2192'}</span>
+        </button>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="stat-card rounded-xl p-4">
@@ -828,7 +840,7 @@ const DashboardView = ({ contacts, stages }) => {
 };
 
 // ─── ContactsView ───
-const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteContact, stages, cadence }) => {
+const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteContact, stages, cadence, stagnation, stagnantOnly, onClearStagnant }) => {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
@@ -862,6 +874,7 @@ const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteCont
     if (stageFilter !== 'All') list = list.filter(c => c.stage === stageFilter);
     if (priorityFilter !== 'All') list = list.filter(c => c.priority === priorityFilter);
     if (tagFilter !== 'All') list = list.filter(c => (c.tags||[]).includes(tagFilter));
+    if (stagnantOnly) list = list.filter(c => isStagnant(c, stagnation));
     list = [...list].sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       if (sortBy === 'stage') return (stgs.indexOf(a.stage) - stgs.indexOf(b.stage)) || a.name.localeCompare(b.name);
@@ -871,7 +884,7 @@ const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteCont
       return 0;
     });
     return list;
-  }, [contacts, search, stageFilter, priorityFilter, tagFilter, sortBy, stgs]);
+  }, [contacts, search, stageFilter, priorityFilter, tagFilter, sortBy, stgs, stagnantOnly, stagnation]);
 
   const toggleSelect = (id) => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
 
@@ -933,13 +946,14 @@ const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteCont
           <option value="priority">Sort by Priority</option>
         </select>
       </div>
-      {(stageFilter !== 'All' || priorityFilter !== 'All' || tagFilter !== 'All') && (
-        <div className="flex items-center gap-2 mb-3 text-sm">
+      {(stageFilter !== 'All' || priorityFilter !== 'All' || tagFilter !== 'All' || stagnantOnly) && (
+        <div className="flex items-center gap-2 mb-3 text-sm flex-wrap">
           <span className="text-gray-500">Active filters:</span>
+          {stagnantOnly && <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">Stagnant<button onClick={onClearStagnant} className="hover:text-red-900">{'\u00D7'}</button></span>}
           {stageFilter !== 'All' && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">{stageFilter}<button onClick={() => setStageFilter('All')} className="hover:text-red-500">{'\u00D7'}</button></span>}
           {priorityFilter !== 'All' && <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">{priorityFilter}<button onClick={() => setPriorityFilter('All')} className="hover:text-red-500">{'\u00D7'}</button></span>}
           {tagFilter !== 'All' && <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">{tagFilter}<button onClick={() => setTagFilter('All')} className="hover:text-red-500">{'\u00D7'}</button></span>}
-          <button onClick={() => { setStageFilter('All'); setPriorityFilter('All'); setTagFilter('All'); }} className="text-xs text-gray-400 hover:text-red-500 ml-1">Clear all</button>
+          <button onClick={() => { setStageFilter('All'); setPriorityFilter('All'); setTagFilter('All'); if (onClearStagnant) onClearStagnant(); }} className="text-xs text-gray-400 hover:text-red-500 ml-1">Clear all</button>
         </div>
       )}
       {selected.size > 0 && (
@@ -989,13 +1003,14 @@ const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteCont
         {filtered.map(c => {
           const fu = getFollowUpStatus(c.nextFollowUp);
           const color = getStageColor(c.stage);
+          const stale = isStagnant(c, stagnation);
           const quickMarkContacted = (e) => { e.stopPropagation(); onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)}); };
           const quickSnooze = (e, days) => { e.stopPropagation(); const d = new Date(); d.setDate(d.getDate() + days); onUpdateContact({...c, nextFollowUp: d.toISOString().split('T')[0]}); };
           return (
             <div key={c.id} className="bg-white rounded-lg p-3 border cursor-pointer active:bg-gray-50" style={{borderLeft: '4px solid ' + color}} onClick={() => onSelectContact(c)}>
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">{c.name}</div>
+                  <div className="font-medium text-sm truncate flex items-center gap-2">{stale && <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="Stagnant"></span>}{c.name}</div>
                   <div className="text-xs text-gray-500 truncate">{c.company || c.stage}</div>
                 </div>
                 <span className={"badge ml-2 flex-shrink-0 " + (c.priority === 'high' ? 'bg-red-100 text-red-700' : c.priority === 'low' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700')}>{c.priority}</span>
@@ -1031,6 +1046,7 @@ const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteCont
             {filtered.map(c => {
               const fu = getFollowUpStatus(c.nextFollowUp);
               const color = getStageColor(c.stage);
+              const stale = isStagnant(c, stagnation);
               const quickMarkContacted = (e) => {
                 e.stopPropagation();
                 onUpdateContact({...c, lastContactDate: today(), nextFollowUp: calculateNextFollowUp(c.stage, cadence)});
@@ -1043,7 +1059,7 @@ const ContactsView = ({ contacts, onSelectContact, onUpdateContact, onDeleteCont
               return (
                 <tr key={c.id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => onSelectContact(c)}>
                   <td className="p-3" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} /></td>
-                  <td className="p-3 font-medium">{c.name}</td>
+                  <td className="p-3 font-medium"><span className="inline-flex items-center gap-2">{stale && <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="Stagnant: no contact beyond threshold"></span>}{c.name}</span></td>
                   <td className="p-3 text-gray-600">{c.company || '\u2014'}</td>
                   <td className="p-3"><span className="px-2 py-1 rounded-full text-xs font-medium text-white" style={{background: color}}>{c.stage}</span></td>
                   <td className={"p-3 text-sm " + fu.cls}>{fu.label}</td>
@@ -1276,36 +1292,14 @@ const SourceROIView = ({ contacts }) => {
   );
 };
 
-// ─── StagnationView ───
-const StagnationView = ({ contacts, stages, stagnation, onSelectContact }) => {
+// ─── Stagnation helper (shared) ───
+// A contact is stagnant when it has never been contacted, or when the days
+// since last contact exceed the stage threshold in data.stagnation.
+const isStagnant = (contact, stagnation) => {
   const stag = stagnation || DEFAULT_STAGNATION;
-  const stagnant = contacts.filter(c => {
-    if (!c.lastContactDate) return true;
-    const threshold = stag[c.stage] || stag.default || DEFAULT_STAGNATION.default;
-    return daysBetween(c.lastContactDate, today()) > threshold;
-  }).sort((a, b) => {
-    const dA = a.lastContactDate ? daysBetween(a.lastContactDate, today()) : 999;
-    const dB = b.lastContactDate ? daysBetween(b.lastContactDate, today()) : 999;
-    return dB - dA;
-  });
-  return (
-    <div>
-      <h1 className="text-2xl font-bold mb-2">Stagnation Alerts</h1>
-      <p className="text-gray-500 text-sm mb-4">Contacts that haven't been touched beyond their stage threshold. Tune thresholds in Settings → Stagnation.</p>
-      {stagnant.length === 0 ? <div className="text-center text-gray-400 py-12">No stagnant contacts. Great engagement!</div> : (
-        <div className="space-y-2">{stagnant.map(c => {
-          const days = c.lastContactDate ? daysBetween(c.lastContactDate, today()) : null;
-          const threshold = stag[c.stage] || stag.default || DEFAULT_STAGNATION.default;
-          return (
-            <div key={c.id} className="bg-white rounded-lg p-3 border flex justify-between items-center cursor-pointer hover:bg-gray-50 border-l-4 border-l-orange-400" onClick={() => onSelectContact(c)}>
-              <div><div className="font-medium">{c.name}</div><div className="text-sm text-gray-500">{c.stage}{c.company ? ' \u00B7 '+c.company : ''}</div></div>
-              <div className="text-right"><div className="text-orange-600 font-bold text-sm">{days ? days+'d silent' : 'Never contacted'}</div><div className="text-xs text-gray-400">Threshold: {threshold}d</div></div>
-            </div>
-          );
-        })}</div>
-      )}
-    </div>
-  );
+  if (!contact.lastContactDate) return true;
+  const threshold = stag[contact.stage] || stag.default || DEFAULT_STAGNATION.default;
+  return daysBetween(contact.lastContactDate, today()) > threshold;
 };
 
 // ─── CSVImportView ───
@@ -2137,6 +2131,9 @@ const App = ({ user, initialCloudData }) => {
   const [activeTab, setActiveTab] = useState('today');
   const [selectedContact, setSelectedContact] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Filter preset: Dashboard sets this to true when the user clicks the
+  // "X stagnant contacts · View" callout, then Contacts opens pre-filtered.
+  const [stagnantOnly, setStagnantOnly] = useState(false);
   const [showRestoreBanner, setShowRestoreBanner] = useState(true);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showTour, setShowTour] = useState(() => {
@@ -2428,13 +2425,12 @@ const App = ({ user, initialCloudData }) => {
     { id: 'followups', label: 'Follow-ups', icon: <Icon name="phone" size={16} /> },
     { id: 'digest', label: 'Weekly Digest', icon: <Icon name="clipboard" size={16} /> },
     { id: 'roi', label: 'Source ROI', icon: <Icon name="chart" size={16} /> },
-    { id: 'stagnation', label: 'Stagnation', icon: <Icon name="alert" size={16} /> },
     { id: 'import', label: 'Import', icon: <Icon name="upload" size={16} /> },
     { id: 'settings', label: 'Settings', icon: <Icon name="settings" size={16} /> }
   ];
 
   // Global empty-state CTA for first-time users with no contacts yet (on contact-centric tabs)
-  const emptyTabs = ['today','dashboard','contacts','deals','followups','digest','roi','stagnation'];
+  const emptyTabs = ['today','dashboard','contacts','deals','followups','digest','roi'];
   const showEmpty = contacts.length === 0 && emptyTabs.includes(activeTab);
 
   const renderContent = () => {
@@ -2453,16 +2449,15 @@ const App = ({ user, initialCloudData }) => {
     }
     switch (activeTab) {
       case 'today': return <TodayView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} cadence={cadence} user={user} />;
-      case 'dashboard': return <DashboardView contacts={contacts} stages={stages} />;
-      case 'contacts': return <ContactsView contacts={contacts} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} stages={stages} cadence={cadence} />;
+      case 'dashboard': return <DashboardView contacts={contacts} stages={stages} stagnation={stagnation} onShowStagnant={() => { setStagnantOnly(true); setActiveTab('contacts'); }} />;
+      case 'contacts': return <ContactsView contacts={contacts} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} stages={stages} cadence={cadence} stagnation={stagnation} stagnantOnly={stagnantOnly} onClearStagnant={() => setStagnantOnly(false)} />;
       case 'deals': return <DealsView contacts={contacts} stages={stages} />;
       case 'followups': return <FollowUpsView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} cadence={cadence} />;
       case 'digest': return <WeeklyDigestView contacts={contacts} stages={stages} />;
       case 'roi': return <SourceROIView contacts={contacts} />;
-      case 'stagnation': return <StagnationView contacts={contacts} stages={stages} stagnation={stagnation} onSelectContact={setSelectedContact} />;
       case 'import': return <CSVImportView stages={stages} onImport={handleBatchImport} />;
       case 'settings': return <SettingsView stages={stages} onUpdateStages={handleUpdateStages} onRenameStage={handleRenameStage} cadence={cadence} onUpdateCadence={handleUpdateCadence} stagnation={stagnation} onUpdateStagnation={handleUpdateStagnation} contacts={contacts} onExport={handleExport} onRestoreBackup={handleRestoreFromBackup} onDownloadJSON={handleDownloadJSON} onRestoreFile={handleRestoreFromFile} onRestorePreUpdate={handleRestorePreUpdate} />;
-      default: return <DashboardView contacts={contacts} stages={stages} />;
+      default: return <DashboardView contacts={contacts} stages={stages} stagnation={stagnation} onShowStagnant={() => { setStagnantOnly(true); setActiveTab('contacts'); }} />;
     }
   };
 
@@ -2569,7 +2564,7 @@ const App = ({ user, initialCloudData }) => {
               <span>{tab.label}</span>
             </div>
           ))}
-          <div className={'mobile-tab ' + (['digest','roi','stagnation','import','settings'].includes(activeTab) || mobileMoreOpen ? 'active' : '')} onClick={() => setMobileMoreOpen(v => !v)}>
+          <div className={'mobile-tab ' + (['digest','roi','import','settings'].includes(activeTab) || mobileMoreOpen ? 'active' : '')} onClick={() => setMobileMoreOpen(v => !v)}>
             <span><Icon name="menu" size={18} /></span>
             <span>More</span>
           </div>
