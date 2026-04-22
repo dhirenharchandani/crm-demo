@@ -2244,7 +2244,7 @@ const App = ({ user, initialCloudData }) => {
               const part = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
               const raw = (user && user.user_metadata && user.user_metadata.display_name) || (user && user.email ? user.email.split('@')[0] : '');
               const name = raw ? raw.split(' ')[0] : '';
-              return <span className="text-sm font-medium truncate" style={{color: 'var(--text-primary)'}}>Good {part}{name ? ', ' + name : ''}</span>;
+              return <span className="text-sm font-medium truncate" style={{color: 'var(--text-primary)'}}>Great {part}{name ? ', ' + name : ''}</span>;
             })()}
           </div>
           {lastAutoBackup && <span className="backup-text text-xs text-gray-400 flex items-center gap-1" title="Auto-backup runs every 30 minutes"><Icon name="save" size={13} /> Backed up {lastAutoBackup.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>}
