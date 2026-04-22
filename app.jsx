@@ -124,9 +124,13 @@ const STAGE_PROBABILITY = {
 const getStageProbability = (stage) => STAGE_PROBABILITY[stage] !== undefined ? STAGE_PROBABILITY[stage] : STAGE_PROBABILITY.default;
 
 const getStageColor = (stage) => {
+  // Some legacy rows (or cloud payloads) may have a contact with no stage set;
+  // fall back to a neutral gray instead of throwing on stage.length.
+  if (stage == null || stage === '') return '#9ca3af';
   if (STAGE_COLORS[stage]) return STAGE_COLORS[stage];
+  const s = String(stage);
   let hash = 0;
-  for (let i = 0; i < stage.length; i++) hash = stage.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
   return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
 };
 
@@ -188,6 +192,9 @@ const migrateData = (data) => {
   data.contacts = (data.contacts || []).map(c => {
     const migrated = {
       ...c,
+      // Backfill stage for legacy rows that somehow made it in without one —
+      // prevents getStageColor / filters from blowing up on a missing field.
+      stage: c.stage || (data.stages && data.stages[0]) || DEFAULT_STAGES[0],
       tags: c.tags || [],
       interactions: c.interactions || [],
       notesTimeline: c.notesTimeline || [],
