@@ -1427,9 +1427,18 @@ const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdate
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
-      <div className="bg-white rounded-xl border p-4 mb-6"><StageManager stages={stages} onUpdate={onUpdateStages} onRenameStage={onRenameStage} /></div>
       <div className="bg-white rounded-xl border p-4 mb-6"><CadenceEditor stages={stages} cadence={cadence} onUpdate={onUpdateCadence} /></div>
       <div className="bg-white rounded-xl border p-4 mb-6"><StagnationEditor stages={stages} stagnation={stagnation} onUpdate={onUpdateStagnation} /></div>
+      <details className="bg-white rounded-xl border p-4 mb-6 group">
+        <summary className="font-semibold cursor-pointer list-none flex items-center justify-between">
+          <span>Advanced: customize pipeline stages</span>
+          <span className="text-xs text-gray-400 group-open:hidden">Most users can skip this</span>
+          <span className="text-xs text-gray-400 hidden group-open:inline">Click to collapse</span>
+        </summary>
+        <div className="mt-4 pt-4 border-t">
+          <StageManager stages={stages} onUpdate={onUpdateStages} onRenameStage={onRenameStage} />
+        </div>
+      </details>
       <div className="bg-white rounded-xl border p-4 mb-6">
         <h3 className="font-semibold mb-3">Export & Backup</h3>
         <div className="flex gap-3 flex-wrap">
