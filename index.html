@@ -285,6 +285,18 @@
   .mobile-more-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
   @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
+  /* ─── Brand logo (theme-aware) ───
+     Renders the correct logo variant for the active theme without needing
+     React state. Both imgs are in the DOM; the current theme toggles
+     display via the .dark class on <html>.
+     - .brand-logo-light is shown when the app is in light mode
+     - .brand-logo-dark is shown when the app is in dark mode (.dark on <html>)
+  */
+  .brand-logo-light, .brand-logo-dark { width: 100%; height: auto; display: block; }
+  .brand-logo-dark { display: none; }
+  .dark .brand-logo-light { display: none; }
+  .dark .brand-logo-dark { display: block; }
+
   /* ─── Login Screen ─── */
   .login-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
     background: var(--bg-primary); padding: 20px; }

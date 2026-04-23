@@ -1873,8 +1873,9 @@ const AuthScreen = ({ onAuth, loading }) => {
   return (
     <div className="login-screen">
       <div className="login-card">
-        <img src="logo.png" alt="InnerGame CRM" style={{maxWidth: '280px', width: '100%', height: 'auto', display: 'block', margin: '0 auto 24px'}} />
-
+        <div style={{margin: '0 auto 24px', maxWidth: '280px'}}>
+          <BrandLogo maxWidth={280} />
+        </div>
         {loading ? (
           <div>
             <div className="skeleton" style={{height:44,borderRadius:8,marginBottom:12}} />
@@ -2066,6 +2067,29 @@ const WelcomeScreen = ({ onImport, onSkip, userName }) => {
 };
 
 // ─── App Wrapper (handles auth + data loading) ───
+// ─── BrandLogo: renders the correct logo for the active theme ───
+// CSS (in index.html) hides whichever variant isn't active based on the
+// .dark class on <html>. Swap the file paths in one place and both surfaces
+// (login + sidebar) update automatically.
+//   logo.png       - light theme: full InnerGame CRM wordmark
+//   logo-dark.png  - dark theme:  full wordmark with light-colored "CRM"
+//                    (falls back to logo-mark.png via <img onerror>)
+const BrandLogo = ({ maxWidth = 280, style }) => {
+  const handleDarkErr = (e) => {
+    // If the dark variant doesn't exist yet, fall back to the purple-only mark
+    if (e.target.dataset.fallbackUsed) return;
+    e.target.dataset.fallbackUsed = '1';
+    e.target.src = 'logo-mark.png';
+  };
+  const common = { style: { maxWidth, width: '100%', height: 'auto', ...(style || {}) } };
+  return (
+    <>
+      <img {...common} className="brand-logo-light" src="logo.png" alt="InnerGame CRM" />
+      <img {...common} className="brand-logo-dark" src="logo-dark.png" alt="InnerGame CRM" onError={handleDarkErr} />
+    </>
+  );
+};
+
 const AppWrapper = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -2510,7 +2534,7 @@ const App = ({ user, initialCloudData }) => {
     <div className="flex h-screen" style={{background: 'var(--bg-primary)', color: 'var(--text-primary)'}}>
       <div className={'desktop-sidebar ' + (sidebarOpen ? 'w-56' : 'w-0') + ' border-r flex-shrink-0 transition-all overflow-hidden'} style={{background: 'var(--sidebar-bg)'}}>
         <div className="p-4 border-b flex items-center">
-          <img src={darkMode ? 'logo-mark.png' : 'logo.png'} alt="InnerGame CRM" style={{maxWidth: darkMode ? '130px' : '160px', width: '100%', height: 'auto', display: 'block'}} />
+          <div style={{maxWidth: '160px', width: '100%'}}><BrandLogo maxWidth={160} /></div>
         </div>
         <nav className="p-3 space-y-1">{tabs.map(tab => (
           <div key={tab.id} className={'sidebar-item text-sm ' + (activeTab === tab.id ? 'active' : '')} onClick={() => setActiveTab(tab.id)}>
