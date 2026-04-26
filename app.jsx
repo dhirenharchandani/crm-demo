@@ -1865,6 +1865,8 @@ const AuthScreen = ({ onAuth, loading }) => {
         </div>
         <div className="text-center text-xs mt-6" style={{color: 'var(--text-tertiary)'}}>
           Developed by InnerGame Consulting
+          {' \u00B7 '}<a href="/privacy.html" style={{color:'inherit', textDecoration:'underline'}}>Privacy</a>
+          {' \u00B7 '}<a href="/terms.html" style={{color:'inherit', textDecoration:'underline'}}>Terms</a>
         </div>
       </div>
     );
@@ -1914,6 +1916,8 @@ const AuthScreen = ({ onAuth, loading }) => {
       </div>
       <div className="text-center text-xs mt-6" style={{color: 'var(--text-tertiary)'}}>
         Developed by InnerGame Consulting
+        {' \u00B7 '}<a href="/privacy.html" style={{color:'inherit', textDecoration:'underline'}}>Privacy</a>
+        {' \u00B7 '}<a href="/terms.html" style={{color:'inherit', textDecoration:'underline'}}>Terms</a>
       </div>
     </div>
   );
@@ -2630,6 +2634,8 @@ const App = ({ user, initialCloudData }) => {
             {renderContent()}
             <div className="app-footer text-center text-xs mt-8 pt-4 pb-2" style={{color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-light)'}}>
               Developed by InnerGame Consulting
+          {' \u00B7 '}<a href="/privacy.html" style={{color:'inherit', textDecoration:'underline'}}>Privacy</a>
+          {' \u00B7 '}<a href="/terms.html" style={{color:'inherit', textDecoration:'underline'}}>Terms</a>
             </div>
           </div>
           {selectedContact && <ContactDetail contact={selectedContact} onClose={() => setSelectedContact(null)} onUpdate={handleUpdateContact} stages={stages} onDelete={handleDeleteContact} cadence={cadence} />}

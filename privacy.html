@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — InnerGame CRM</title>
+<meta name="description" content="How InnerGame CRM handles your data.">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #818cf8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Inter", Helvetica, Arial, sans-serif;
+         background: var(--bg); color: var(--text); line-height: 1.6; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 96px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px;
+           padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  header img { max-width: 180px; height: auto; }
+  header a { color: var(--muted); text-decoration: none; font-size: 14px; }
+  header a:hover { color: var(--accent); }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  .updated { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+  h2 { font-size: 18px; margin: 32px 0 12px; }
+  p, li { font-size: 15px; color: var(--text); }
+  ul { padding-left: 22px; }
+  ul li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+           padding: 16px 20px; margin: 16px 0; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 48px;
+           padding-top: 24px; border-top: 1px solid var(--border); }
+  footer a { margin: 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a href="/"><img src="logo-dark.png" alt="InnerGame CRM"></a>
+    <a href="/">← Back to app</a>
+  </header>
+
+  <h1>Privacy Policy</h1>
+  <div class="updated">Last updated: April 26, 2026</div>
+
+  <p>InnerGame CRM is a contact and pipeline tracker built and operated by InnerGame Consulting. This page explains what data we collect, how we use it, and what control you have over it. We aim for plain English over legalese.</p>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li><strong>Account information:</strong> the email address and display name you provide at signup.</li>
+    <li><strong>Authentication metadata:</strong> hashed password, timestamps of sign-up and last sign-in, IP address at sign-in (kept temporarily for security).</li>
+    <li><strong>CRM content you create:</strong> contact records, notes, follow-up dates, pipeline stages, deal values, and any other data you enter into the app.</li>
+    <li><strong>Browser-local backups:</strong> the app keeps copies of your data in your browser&rsquo;s <code>localStorage</code> and <code>IndexedDB</code> for offline use. This data lives only on your devices.</li>
+    <li><strong>Crash reports:</strong> if the app errors, anonymized stack traces are sent to <a href="https://sentry.io">Sentry</a> for debugging. These do not include your contact data.</li>
+  </ul>
+
+  <h2>What we don&rsquo;t collect</h2>
+  <ul>
+    <li>We do not run advertising trackers, marketing pixels, or behavioural analytics.</li>
+    <li>We do not collect or analyze the content of your contacts or notes for any purpose other than rendering them back to you.</li>
+    <li>We do not sell, rent, or share your data with third parties for marketing.</li>
+  </ul>
+
+  <h2>Where your data lives</h2>
+  <p>Your data is stored in a <a href="https://supabase.com">Supabase</a> Postgres database hosted in AWS Singapore (ap-southeast-1). Supabase&rsquo;s row-level security policies isolate your data so other users cannot read it. Backups are made daily and kept for 30 days in a private Google Drive folder controlled by InnerGame Consulting.</p>
+
+  <h2>Subprocessors we use</h2>
+  <div class="panel">
+    <ul>
+      <li><strong>Supabase</strong> — database, authentication, password hashing</li>
+      <li><strong>Resend</strong> — transactional email (signup confirmation, password reset)</li>
+      <li><strong>Sentry</strong> — anonymized error monitoring</li>
+      <li><strong>GitHub Pages</strong> — static hosting of the app shell</li>
+      <li><strong>Cloudflare</strong> (where applicable) — DNS</li>
+    </ul>
+  </div>
+  <p>Each of these processes data on our behalf under their own privacy terms.</p>
+
+  <h2>Cookies</h2>
+  <p>The only browser storage we use is for keeping you signed in (a Supabase auth token) and caching your CRM data offline. We don&rsquo;t set tracking cookies or use third-party advertising cookies.</p>
+
+  <h2>Your rights</h2>
+  <ul>
+    <li><strong>Access and export:</strong> the app provides a one-click JSON export from Settings → Export &amp; Backup. You can also request a copy of your data by emailing <a href="mailto:noreply@myinnergame.com">noreply@myinnergame.com</a>.</li>
+    <li><strong>Correction:</strong> you can edit any contact, note, or setting directly in the app at any time.</li>
+    <li><strong>Deletion:</strong> email <a href="mailto:noreply@myinnergame.com">noreply@myinnergame.com</a> from the email address on your account and we&rsquo;ll delete your account and all associated data within 30 days.</li>
+    <li><strong>Portability:</strong> the JSON export contains everything in a standard, re-importable format.</li>
+  </ul>
+
+  <h2>Data retention</h2>
+  <p>We keep your data for as long as you have an active account. When you delete your account, your data is removed from the database within 30 days and from the most recent daily backups within 60 days.</p>
+
+  <h2>Children</h2>
+  <p>InnerGame CRM is not intended for use by children under 13. We do not knowingly collect data from children.</p>
+
+  <h2>Changes</h2>
+  <p>If we materially change how we handle data, we&rsquo;ll update this page and post a banner in the app. The &ldquo;last updated&rdquo; date above always reflects the most recent revision.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or concerns: <a href="mailto:noreply@myinnergame.com">noreply@myinnergame.com</a>.</p>
+
+  <footer>
+    <a href="/">App</a> ·
+    <a href="/privacy.html">Privacy</a> ·
+    <a href="/terms.html">Terms</a> ·
+    InnerGame Consulting
+  </footer>
+</main>
+</body>
+</html>
