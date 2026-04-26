@@ -42,7 +42,7 @@ const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Initialize Sentry as early as possible so bootstrap errors are captured
 if (window.Sentry) {
   Sentry.init({
-    dsn: 'https://02b1e3829d72893309f490b800233dec@o4511252877148160.ingest.us.sentry.io/4511252884619264',
+    dsn: 'https://ea801e98809d10d36d7e756be04476e5@o4511252877148160.ingest.us.sentry.io/4511287001874432',
     release: 'innergame-crm@' + (document.documentElement.dataset.build || 'unknown'),
     environment: (location.hostname === 'crm.myinnergame.com' ? 'production' : 'dev'),
     // Keep the sample rate low on free tier (5k events/mo)
