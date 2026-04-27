@@ -1709,6 +1709,36 @@ const useCloudSaveStatus = () => {
   return status;
 };
 
+// Stale-version detection: if PostgREST tells us the crm_data table is missing
+// (PGRST205) or the project rejects our anon key, the user is on a cached
+// bundle that points at the wrong Supabase project. Surface a banner so they
+// can refresh — local data is safe in localStorage/IDB regardless.
+let _staleVersion = { value: false, listeners: new Set() };
+const setStaleVersion = (v) => {
+  if (_staleVersion.value === v) return;
+  _staleVersion.value = v;
+  _staleVersion.listeners.forEach(fn => fn(v));
+};
+const useStaleVersion = () => {
+  const [stale, setStale] = useState(_staleVersion.value);
+  useEffect(() => {
+    _staleVersion.listeners.add(setStale);
+    return () => _staleVersion.listeners.delete(setStale);
+  }, []);
+  return stale;
+};
+// Codes that mean "the cloud you're talking to doesn't have the table /
+// project / key you expect" — i.e., your bundle is stale.
+const STALE_BUNDLE_PG_CODES = new Set([
+  'PGRST205',  // Could not find the table '...' in the schema cache
+  '42P01',     // Postgres "relation does not exist"
+]);
+const STALE_BUNDLE_AUTH_HINTS = [
+  'invalid api key',                  // anon key from old project
+  'jwt expired',                      // pre-migration JWT, now invalid
+  'invalid claim: missing sub claim', // mismatched key/project
+];
+
 // Supabase/PostgREST returns plain objects {code, details, hint, message} on
 // failure. Wrap them as a proper Error so Sentry can stringify them properly
 // and we can attach the raw fields as context for debugging.
@@ -1719,6 +1749,15 @@ const reportCloudError = (op, raw, extras) => {
   if (raw && raw.hint) err.hint = raw.hint;
   if (raw && raw.stack) err.stack = raw.stack;
   console.error('[CRM] ' + op + ' failed:', { code: raw && raw.code, message: raw && raw.message, details: raw && raw.details, hint: raw && raw.hint });
+  // Stale-bundle detection: if the cloud says the table is missing or our
+  // anon key is invalid, the running bundle predates the project migration
+  // and the user needs to refresh.
+  const code = raw && raw.code;
+  const msg = ((raw && raw.message) || '').toLowerCase();
+  const isStale =
+    (code && STALE_BUNDLE_PG_CODES.has(code)) ||
+    STALE_BUNDLE_AUTH_HINTS.some(h => msg.includes(h));
+  if (isStale) setStaleVersion(true);
   if (window.Sentry) {
     Sentry.withScope(scope => {
       scope.setTag('operation', op);
@@ -2210,6 +2249,7 @@ const App = ({ user, initialCloudData }) => {
     return loadData();
   });
   const cloudStatus = useCloudSaveStatus();
+  const staleVersion = useStaleVersion();
   const [activeTab, setActiveTab] = useState('today');
   const [selectedContact, setSelectedContact] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -2556,6 +2596,16 @@ const App = ({ user, initialCloudData }) => {
         ))}</nav>
       </div>
       <div className="flex-1 flex flex-col overflow-hidden">
+        {staleVersion && (
+          <div role="alert" style={{background:'#7f1d1d',color:'#fff',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'center',gap:12,fontSize:13,fontWeight:500,flexShrink:0}}>
+            <Icon name="alert" size={16} />
+            <span>This app is out of date. Your local notes are safe — refresh to reconnect to the cloud.</span>
+            <button
+              onClick={() => { try { location.reload(); } catch(_) { window.location.href = window.location.pathname; } }}
+              style={{background:'#fff',color:'#7f1d1d',border:'none',borderRadius:6,padding:'6px 14px',fontSize:13,fontWeight:600,cursor:'pointer'}}
+            >Refresh now</button>
+          </div>
+        )}
         <div className="desktop-topbar border-b px-4 py-3 flex items-center gap-3" style={{background: 'var(--topbar-bg)'}}>
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-gray-400 hover:text-gray-600" title="Toggle sidebar"><Icon name="menu" size={20} /></button>
           <div className="flex-1" />
