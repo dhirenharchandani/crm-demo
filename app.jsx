@@ -104,9 +104,13 @@ const DEFAULT_CADENCE = {
   'Closed Won': 30, 'Closed Lost': 30
 };
 
+// Default days between client check-ins (declared here because MASTER_DATA
+// below references it at module-load time — keep above MASTER_DATA).
+const CLIENT_CHECKIN_DEFAULT = 30;
+
 // MASTER_DATA seeds a fresh-install (no cloud row yet). Contacts stay empty
 // so new users start clean; stages + cadence come from the real defaults.
-const MASTER_DATA = { version: 7, contacts: [], stages: [...DEFAULT_STAGES], cadence: {...DEFAULT_CADENCE} };
+const MASTER_DATA = { version: 7, contacts: [], stages: [...DEFAULT_STAGES], cadence: {...DEFAULT_CADENCE}, clientCheckInDays: CLIENT_CHECKIN_DEFAULT };
 
 const STAGE_COLORS = {
   'New Lead': '#3b82f6', 'Contacted': '#06b6d4',
@@ -166,6 +170,20 @@ const formatDate = (d) => {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// \u2500\u2500\u2500 Client conversion helpers \u2500\u2500\u2500
+// A converted client is dropped from the lead pipeline math + lead follow-up
+// nagging, and instead tracked by MRR with a gentler recurring check-in.
+// (CLIENT_CHECKIN_DEFAULT is declared earlier \u2014 needed by MASTER_DATA.)
+const isClient = (c) => !!c && c.clientStatus === 'client';
+const calculateClientCheckIn = (days, fromDate) => {
+  const n = (typeof days === 'number' && days > 0) ? days : CLIENT_CHECKIN_DEFAULT;
+  const d = fromDate ? new Date(fromDate + 'T00:00:00') : new Date();
+  d.setDate(d.getDate() + n);
+  const result = d.toISOString().split('T')[0];
+  const t = today();
+  return result < t ? t : result;
+};
+
 const getFollowUpStatus = (nextFollowUp) => {
   if (!nextFollowUp) return { label: 'No date', cls: 'text-gray-400' };
   const diff = daysBetween(today(), nextFollowUp);
@@ -202,6 +220,7 @@ const migrateData = (data) => {
   const cad = data.cadence;
   const t = today();
   if (typeof data.scratchpad !== 'string') data.scratchpad = '';
+  if (typeof data.clientCheckInDays !== 'number' || data.clientCheckInDays <= 0) data.clientCheckInDays = CLIENT_CHECKIN_DEFAULT;
   data.contacts = (data.contacts || []).map(c => {
     const migrated = {
       ...c,
@@ -213,13 +232,18 @@ const migrateData = (data) => {
       notesTimeline: c.notesTimeline || [],
       attachments: c.attachments || [],
       monthlyRevenue: c.monthlyRevenue || 0,
+      // Conversion fields: legacy rows are leads until explicitly converted.
+      clientStatus: c.clientStatus === 'client' ? 'client' : 'lead',
+      convertedAt: c.convertedAt || null,
       createdAt: c.createdAt || new Date().toISOString(),
       lastContactDate: c.lastContactDate || c.lastContacted || '',
       stageChangedAt: c.stageChangedAt || new Date().toISOString()
     };
     if (!migrated.nextFollowUp || migrated.nextFollowUp < t) {
       const baseDate = migrated.lastContactDate || t;
-      migrated.nextFollowUp = calculateNextFollowUp(migrated.stage, cad, baseDate);
+      migrated.nextFollowUp = migrated.clientStatus === 'client'
+        ? calculateClientCheckIn(data.clientCheckInDays, baseDate)
+        : calculateNextFollowUp(migrated.stage, cad, baseDate);
     }
     return migrated;
   });
@@ -333,13 +357,14 @@ const loadDataWithIDBFallback = async (syncData) => {
 };
 
 // ─── ContactDetail Component ───
-const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence }) => {
+const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence, clientCheckInDays }) => {
   const [form, setForm] = useState({...contact});
   const [tagInput, setTagInput] = useState('');
   const [noteInput, setNoteInput] = useState('');
   const [noteType, setNoteType] = useState('General');
   const [attachLabel, setAttachLabel] = useState('');
   const [attachUrl, setAttachUrl] = useState('');
+  const [convertMrr, setConvertMrr] = useState(contact.monthlyRevenue || 0);
   const stgs = stages || DEFAULT_STAGES;
 
   const handleSave = () => {
@@ -376,12 +401,65 @@ const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence }
     const note = { id: Math.random().toString(36).substr(2, 9), text, type: noteType, date: new Date().toISOString() };
     // Logging a note = real interaction, so update lastContactDate and recalculate follow-up
     const newLastContact = today();
-    setForm({...form, notesTimeline: [note, ...(form.notesTimeline||[])], lastContactDate: newLastContact, nextFollowUp: calculateNextFollowUp(form.stage, cadence, newLastContact)});
+    const nextFollowUp = isClient(form)
+      ? calculateClientCheckIn(clientCheckInDays, newLastContact)
+      : calculateNextFollowUp(form.stage, cadence, newLastContact);
+    setForm({...form, notesTimeline: [note, ...(form.notesTimeline||[])], lastContactDate: newLastContact, nextFollowUp});
     setNoteInput('');
   };
 
   const removeNote = (id) => {
     setForm({...form, notesTimeline: (form.notesTimeline||[]).filter(n => n.id !== id)});
+  };
+
+  const convertToClient = async () => {
+    const mrr = Number(convertMrr) || 0;
+    const ok = await confirmDialog({
+      title: 'Convert to client?',
+      body: (contact.name || 'This lead') + ' will be marked a client at $' + mrr.toLocaleString() + '/mo MRR, moved to "Closed Won", and dropped from the lead pipeline. They’ll switch to a recurring client check-in instead of lead follow-ups.',
+      confirmLabel: 'Convert',
+    });
+    if (!ok) return;
+    const now = new Date().toISOString();
+    const wonStage = (stgs.includes('Closed Won')) ? 'Closed Won' : form.stage;
+    const event = {
+      id: Math.random().toString(36).substr(2, 9),
+      text: 'Converted to client — MRR $' + mrr.toLocaleString(),
+      type: 'Conversion',
+      date: now
+    };
+    const updated = {
+      ...form,
+      clientStatus: 'client',
+      convertedAt: now,
+      monthlyRevenue: mrr,
+      stage: wonStage,
+      stageChangedAt: now,
+      lastContactDate: today(),
+      nextFollowUp: calculateClientCheckIn(clientCheckInDays, today()),
+      notesTimeline: [event, ...(form.notesTimeline || [])]
+    };
+    onUpdate(updated);
+    onClose();
+    toast((contact.name || 'Lead') + ' converted to client', 'success');
+  };
+
+  const revertToLead = async () => {
+    const ok = await confirmDialog({
+      title: 'Revert to lead?',
+      body: (contact.name || 'This client') + ' will go back to being a lead and re-enter the pipeline + lead follow-ups. MRR is kept on the record but no longer counted as client revenue.',
+      confirmLabel: 'Revert',
+    });
+    if (!ok) return;
+    const updated = {
+      ...form,
+      clientStatus: 'lead',
+      convertedAt: null,
+      nextFollowUp: calculateNextFollowUp(form.stage, cadence, today())
+    };
+    onUpdate(updated);
+    onClose();
+    toast((contact.name || 'Client') + ' reverted to lead', 'info');
   };
 
   // Link-only attachments: never embed binary in the payload (would blow past
@@ -460,6 +538,43 @@ const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence }
 
       {/* Scrollable body */}
       <div className="overflow-y-auto flex-1 p-4 pt-3" style={{overflowY: 'scroll'}}>
+        {/* Lead → Client conversion */}
+        {isClient(form) ? (
+          <div className="mb-4 rounded-lg border p-3" style={{background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.35)'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-base flex-shrink-0">{'🎉'}</span>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-emerald-700">Client</div>
+                  <div className="text-xs text-gray-500 truncate">
+                    Since {formatDate(form.convertedAt)} · ${Number(form.monthlyRevenue || 0).toLocaleString()}/mo · next check-in {formatDate(form.nextFollowUp)}
+                  </div>
+                </div>
+              </div>
+              <button onClick={revertToLead} className="text-xs text-gray-400 hover:text-red-500 flex-shrink-0 underline">Revert to lead</button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-4 rounded-lg border p-3" style={{background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.3)'}}>
+            <div className="text-sm font-semibold text-emerald-700 mb-1">Convert to client</div>
+            <div className="text-xs text-gray-500 mb-2">Won the deal? Set their monthly revenue and convert — they’ll leave the lead pipeline and start a client check-in cycle.</div>
+            <div className="flex gap-2">
+              <div className="flex-1 flex items-center gap-1.5">
+                <span className="text-sm text-gray-500">$</span>
+                <input
+                  type="number"
+                  value={convertMrr}
+                  onChange={e => setConvertMrr(Number(e.target.value))}
+                  placeholder="Monthly revenue"
+                  className="flex-1 text-sm"
+                />
+                <span className="text-xs text-gray-400 whitespace-nowrap">/mo</span>
+              </div>
+              <button onClick={convertToClient} className="px-3 py-1 rounded text-sm font-medium text-white hover:opacity-90 flex-shrink-0" style={{background: '#10b981'}}>Convert</button>
+            </div>
+          </div>
+        )}
+
         {/* Activity Timeline first — this is the CRM centerpiece */}
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">Activity Timeline</label>
@@ -475,7 +590,7 @@ const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence }
             {(form.notesTimeline||[]).map(n => (
               <div key={n.id} className="bg-gray-50 rounded p-2 text-sm flex justify-between items-start">
                 <div>
-                  <span className={"text-xs font-medium mr-2 " + (n.type==='Call' ? 'text-green-600' : n.type==='Email' ? 'text-blue-600' : n.type==='Meeting' ? 'text-purple-600' : 'text-gray-600')}>{n.type}</span>
+                  <span className={"text-xs font-medium mr-2 " + (n.type==='Call' ? 'text-green-600' : n.type==='Email' ? 'text-blue-600' : n.type==='Meeting' ? 'text-purple-600' : n.type==='Conversion' ? 'text-emerald-700 font-bold' : 'text-gray-600')}>{n.type}</span>
                   <span className="text-gray-700">{n.text}</span>
                   <div className="text-xs text-gray-400 mt-1">{formatDate(n.date)}</div>
                 </div>
@@ -593,12 +708,14 @@ const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence }
 const TodayView = ({ contacts, stages, onSelectContact, onUpdateContact, cadence, user }) => {
   const t = today();
   const stgs = stages || DEFAULT_STAGES;
-  const overdue = contacts.filter(c => c.nextFollowUp && c.nextFollowUp < t).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
-  const dueToday = contacts.filter(c => c.nextFollowUp === t);
+  // Lead follow-up lists exclude converted clients (they get a client check-in
+  // surfaced in the Clients view, not the lead-chasing queue).
+  const overdue = contacts.filter(c => !isClient(c) && c.nextFollowUp && c.nextFollowUp < t).sort((a,b) => a.nextFollowUp.localeCompare(b.nextFollowUp));
+  const dueToday = contacts.filter(c => !isClient(c) && c.nextFollowUp === t);
   const inDays = (d) => { const dt = new Date(t); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; };
-  const dueTomorrow = contacts.filter(c => c.nextFollowUp === inDays(1));
+  const dueTomorrow = contacts.filter(c => !isClient(c) && c.nextFollowUp === inDays(1));
   const recentNotes = contacts.flatMap(c => (c.notesTimeline||[]).map(n => ({...n, contactName: c.name, contactId: c.id, contact: c}))).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 8);
-  const topDeals = contacts.filter(c => c.dealValue > 0).sort((a,b) => b.dealValue - a.dealValue).slice(0, 5);
+  const topDeals = contacts.filter(c => !isClient(c) && c.dealValue > 0).sort((a,b) => b.dealValue - a.dealValue).slice(0, 5);
   const weekAgo = (() => { const d = new Date(t); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })();
   const contactedThisWeek = contacts.filter(c => c.lastContactDate && c.lastContactDate >= weekAgo).length;
   const totalContacts = contacts.length;
@@ -756,10 +873,16 @@ const DashboardView = ({ contacts, stages, stagnation, onShowStagnant }) => {
   const stgs = stages || DEFAULT_STAGES;
   const totalContacts = contacts.length;
   const stagnantCount = contacts.filter(c => isStagnant(c, stagnation)).length;
-  const totalDealValue = contacts.reduce((s, c) => s + (c.dealValue || 0), 0);
-  const weightedValue = contacts.reduce((s, c) => s + (c.dealValue || 0) * getStageProbability(c.stage), 0);
-  const overdue = contacts.filter(c => c.nextFollowUp && c.nextFollowUp < today()).length;
-  const dueToday = contacts.filter(c => c.nextFollowUp === today()).length;
+  // Pipeline math is lead-only — converted clients leave the open pipeline.
+  const leads = contacts.filter(c => !isClient(c));
+  const clientList = contacts.filter(isClient);
+  const totalDealValue = leads.reduce((s, c) => s + (c.dealValue || 0), 0);
+  const weightedValue = leads.reduce((s, c) => s + (c.dealValue || 0) * getStageProbability(c.stage), 0);
+  const overdue = leads.filter(c => c.nextFollowUp && c.nextFollowUp < today()).length;
+  const dueToday = leads.filter(c => c.nextFollowUp === today()).length;
+  const activeClients = clientList.length;
+  const totalMRR = clientList.reduce((s, c) => s + (Number(c.monthlyRevenue) || 0), 0);
+  const conversionRate = contacts.length > 0 ? Math.round((activeClients / contacts.length) * 100) : 0;
 
   // 30-day daily series for sparklines.
   // Uses createdAt for cumulative contacts/$ and lastContactDate for activity.
@@ -777,8 +900,10 @@ const DashboardView = ({ contacts, stages, stagnation, onShowStagnant }) => {
         const k = dayKey(c.createdAt);
         if (idx[k] !== undefined) {
           series[idx[k]].contacts += 1;
-          series[idx[k]].value += (c.dealValue || 0);
-          series[idx[k]].weighted += (c.dealValue || 0) * getStageProbability(c.stage);
+          if (!isClient(c)) {
+            series[idx[k]].value += (c.dealValue || 0);
+            series[idx[k]].weighted += (c.dealValue || 0) * getStageProbability(c.stage);
+          }
         }
       }
       if (c.lastContactDate && idx[c.lastContactDate] !== undefined) {
@@ -809,7 +934,7 @@ const DashboardView = ({ contacts, stages, stagnation, onShowStagnant }) => {
 
   // Funnel: all stages in pipeline order, count + $, with conversion % to the next stage
   const funnel = stgs.map(stage => {
-    const stageContacts = contacts.filter(c => c.stage === stage);
+    const stageContacts = contacts.filter(c => c.stage === stage && !isClient(c));
     const count = stageContacts.length;
     const value = stageContacts.reduce((s, c) => s + (c.dealValue || 0), 0);
     return { stage, count, value, color: getStageColor(stage) };
@@ -870,6 +995,25 @@ const DashboardView = ({ contacts, stages, stagnation, onShowStagnant }) => {
           <div className="text-3xl font-bold text-purple-600">{touchesSum}</div>
           <div className="text-xs text-gray-400 mt-1">contacts reached</div>
           <div className="mt-1"><Sparkline values={trends.touchesSeries} color="#8b5cf6" fill={true} /></div>
+        </div>
+      </div>
+
+      {/* Client metrics */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        <div className="stat-card rounded-xl p-4">
+          <div className="text-sm text-gray-500">Active Clients</div>
+          <div className="text-3xl font-bold" style={{color: '#10b981'}}>{activeClients}</div>
+          <div className="text-xs text-gray-400 mt-1">converted from leads</div>
+        </div>
+        <div className="stat-card rounded-xl p-4">
+          <div className="text-sm text-gray-500">Total MRR</div>
+          <div className="text-3xl font-bold" style={{color: '#059669'}}>${totalMRR.toLocaleString()}</div>
+          <div className="text-xs text-gray-400 mt-1">monthly recurring revenue</div>
+        </div>
+        <div className="stat-card rounded-xl p-4">
+          <div className="text-sm text-gray-500">Conversion Rate</div>
+          <div className="text-3xl font-bold" style={{color: '#0d9488'}}>{conversionRate}%</div>
+          <div className="text-xs text-gray-400 mt-1">clients ÷ all contacts</div>
         </div>
       </div>
 
@@ -1216,17 +1360,89 @@ const PipelineView = ({ contacts, onUpdateContact, onSelectContact, stages, cade
   );
 };
 
+// ─── ClientsView ───
+const ClientsView = ({ contacts, onSelectContact }) => {
+  const t = today();
+  const clients = contacts.filter(isClient).sort((a, b) => {
+    // Overdue check-ins first, then by next check-in date
+    const ao = a.nextFollowUp && a.nextFollowUp < t ? 0 : 1;
+    const bo = b.nextFollowUp && b.nextFollowUp < t ? 0 : 1;
+    if (ao !== bo) return ao - bo;
+    return (a.nextFollowUp || '').localeCompare(b.nextFollowUp || '');
+  });
+  const totalMRR = clients.reduce((s, c) => s + (Number(c.monthlyRevenue) || 0), 0);
+  const dueCheckIns = clients.filter(c => c.nextFollowUp && c.nextFollowUp <= t).length;
+  const fmtMoney = (n) => '$' + (Number(n) || 0).toLocaleString();
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-4">Clients</h1>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <div className="stat-card rounded-xl p-4">
+          <div className="text-sm text-gray-500">Active Clients</div>
+          <div className="text-3xl font-bold" style={{color:'#10b981'}}>{clients.length}</div>
+        </div>
+        <div className="stat-card rounded-xl p-4">
+          <div className="text-sm text-gray-500">Total MRR</div>
+          <div className="text-3xl font-bold" style={{color:'#059669'}}>{fmtMoney(totalMRR)}</div>
+        </div>
+        <div className="stat-card rounded-xl p-4">
+          <div className="text-sm text-gray-500">Check-ins Due</div>
+          <div className="text-3xl font-bold" style={{color: dueCheckIns > 0 ? '#dc2626' : '#0d9488'}}>{dueCheckIns}</div>
+        </div>
+      </div>
+      {clients.length === 0 ? (
+        <div className="text-center text-gray-400 py-12 text-sm">
+          No clients yet. Open a lead and use “Convert to client” once you’ve won the deal.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {clients.map(c => {
+            const overdue = c.nextFollowUp && c.nextFollowUp < t;
+            const dueToday = c.nextFollowUp === t;
+            return (
+              <div key={c.id} onClick={() => onSelectContact(c)}
+                   className="bg-white rounded-lg p-4 border flex items-center justify-between cursor-pointer hover:bg-gray-50 hover:border-emerald-300 transition-colors"
+                   style={{borderLeft: '4px solid ' + (overdue ? '#ef4444' : dueToday ? '#f59e0b' : '#10b981')}}>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm truncate">{c.name || '(no name)'}</div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {c.company ? c.company + ' · ' : ''}Client since {formatDate(c.convertedAt)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-6 flex-shrink-0 ml-3 text-right">
+                  <div>
+                    <div className="text-sm font-bold" style={{color:'#059669'}}>{fmtMoney(c.monthlyRevenue)}<span className="text-xs font-normal text-gray-400">/mo</span></div>
+                    <div className="text-xs text-gray-400">MRR</div>
+                  </div>
+                  <div className="w-28">
+                    <div className={"text-sm font-medium " + (overdue ? 'text-red-600' : dueToday ? 'text-orange-500' : 'text-gray-600')}>
+                      {overdue ? 'Check-in overdue' : dueToday ? 'Check-in today' : 'Check-in ' + formatDate(c.nextFollowUp)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── DealsView ───
 const DealsView = ({ contacts, stages }) => {
-  const deals = contacts.filter(c => c.dealValue > 0).sort((a, b) => b.dealValue - a.dealValue);
+  // Open pipeline only — converted clients are no longer "deals".
+  const deals = contacts.filter(c => c.dealValue > 0 && !isClient(c)).sort((a, b) => b.dealValue - a.dealValue);
   const totalValue = deals.reduce((s, c) => s + c.dealValue, 0);
+  const convertedCount = contacts.filter(c => isClient(c) && c.dealValue > 0).length;
   return (
     <div>
       <h1 className="text-2xl font-bold mb-4">Deals</h1>
       <div className="stat-card rounded-xl p-4 mb-6">
         <div className="text-sm text-gray-500">Total Pipeline Value</div>
         <div className="text-3xl font-bold text-green-600">${totalValue.toLocaleString()}</div>
-        <div className="text-sm text-gray-500 mt-1">{deals.length} active deals</div>
+        <div className="text-sm text-gray-500 mt-1">{deals.length} active deals{convertedCount > 0 ? ' · ' + convertedCount + ' converted to clients (excluded)' : ''}</div>
       </div>
       {deals.length === 0 ? <div className="text-center text-gray-400 py-12">No deals with values yet. Edit contacts to add deal values.</div>
       : <div className="space-y-3">{deals.map(c => (
@@ -1243,7 +1459,9 @@ const DealsView = ({ contacts, stages }) => {
 const FollowUpsView = ({ contacts, stages, onSelectContact, onUpdateContact, cadence }) => {
   const [stageFilter, setStageFilter] = useState('all');
   const stgs = stages || DEFAULT_STAGES;
-  const filtered = stageFilter === 'all' ? contacts : contacts.filter(c => c.stage === stageFilter);
+  // Converted clients are excluded from lead follow-ups entirely.
+  const leadPool = contacts.filter(c => !isClient(c));
+  const filtered = stageFilter === 'all' ? leadPool : leadPool.filter(c => c.stage === stageFilter);
 
   const t = today();
   const inDays = (d) => { const dt = new Date(t); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; };
@@ -1344,7 +1562,7 @@ const WeeklyDigestView = ({ contacts, stages }) => {
   const sd = new Date(); sd.setDate(sd.getDate() - 7);
   const sdStr = sd.toISOString().split('T')[0];
   const recentlyContacted = contacts.filter(c => c.lastContactDate && c.lastContactDate >= sdStr);
-  const overdue = contacts.filter(c => c.nextFollowUp && c.nextFollowUp < today());
+  const overdue = contacts.filter(c => !isClient(c) && c.nextFollowUp && c.nextFollowUp < today());
   return (
     <div>
       <h1 className="text-2xl font-bold mb-4">Weekly Digest</h1>
@@ -1679,7 +1897,9 @@ const ScratchpadView = ({ scratchpad, onUpdate }) => {
 };
 
 // ─── SettingsView ───
-const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdateCadence, stagnation, onUpdateStagnation, contacts, onExport, onRestoreBackup, onDownloadJSON, onRestoreFile, onRestorePreUpdate }) => {
+const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdateCadence, stagnation, onUpdateStagnation, clientCheckInDays, onUpdateClientCheckIn, contacts, onExport, onRestoreBackup, onDownloadJSON, onRestoreFile, onRestorePreUpdate }) => {
+  const [checkInDraft, setCheckInDraft] = useState(clientCheckInDays || CLIENT_CHECKIN_DEFAULT);
+  useEffect(() => { setCheckInDraft(clientCheckInDays || CLIENT_CHECKIN_DEFAULT); }, [clientCheckInDays]);
   const fileRef = useRef();
   const preUpdateKeys = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -1691,6 +1911,27 @@ const SettingsView = ({ stages, onUpdateStages, onRenameStage, cadence, onUpdate
     <div>
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
       <div className="bg-white rounded-xl border p-4 mb-6"><CadenceEditor stages={stages} cadence={cadence} onUpdate={onUpdateCadence} /></div>
+      <div className="bg-white rounded-xl border p-4 mb-6">
+        <h3 className="font-semibold mb-2">Client check-in cadence</h3>
+        <p className="text-sm text-gray-500 mb-3">How often to check in with converted clients. They’re excluded from lead follow-up nagging and use this gentler recurring cadence instead.</p>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Every</span>
+          <input
+            type="number"
+            min="1"
+            value={checkInDraft}
+            onChange={e => setCheckInDraft(Number(e.target.value))}
+            className="w-20 text-sm"
+          />
+          <span className="text-sm text-gray-600">days</span>
+          <button
+            onClick={() => onUpdateClientCheckIn(checkInDraft)}
+            disabled={!checkInDraft || checkInDraft < 1 || checkInDraft === (clientCheckInDays || CLIENT_CHECKIN_DEFAULT)}
+            className="ml-2 px-3 py-1 rounded text-sm font-medium text-white disabled:opacity-40"
+            style={{background: 'var(--accent)'}}
+          >Save</button>
+        </div>
+      </div>
       <div className="bg-white rounded-xl border p-4 mb-6"><StagnationEditor stages={stages} stagnation={stagnation} onUpdate={onUpdateStagnation} /></div>
       <details className="bg-white rounded-xl border p-4 mb-6 group">
         <summary className="font-semibold cursor-pointer list-none flex items-center justify-between">
@@ -2674,6 +2915,19 @@ const App = ({ user, initialCloudData }) => {
   const handleUpdateStagnation = (ns) => {
     setData(prev => ({...prev, stagnation: ns}));
   };
+  const handleUpdateClientCheckIn = (days) => {
+    const n = Math.max(1, Math.round(Number(days) || CLIENT_CHECKIN_DEFAULT));
+    setData(prev => {
+      if (n === (prev.clientCheckInDays || CLIENT_CHECKIN_DEFAULT)) return {...prev, clientCheckInDays: n};
+      // Re-base existing clients' next check-in off their last contact.
+      const updatedContacts = (prev.contacts || []).map(c => {
+        if (!isClient(c)) return c;
+        const base = c.lastContactDate || today();
+        return {...c, nextFollowUp: calculateClientCheckIn(n, base)};
+      });
+      return {...prev, clientCheckInDays: n, contacts: updatedContacts};
+    });
+  };
   const handleBatchImport = (nc) => { setData(prev => ({...prev, contacts: [...prev.contacts, ...nc]})); };
   const handleUpdateScratchpad = (text) => { setData(prev => ({...prev, scratchpad: text})); };
   const handleExport = () => exportContactsToCSV(contacts);
@@ -2715,7 +2969,7 @@ const App = ({ user, initialCloudData }) => {
   const handleAddContact = () => {
     const nc = { id: Math.random().toString(36).substr(2,9), name: '', company: '', stage: stages[0], email: '', phone: '', source: 'Direct',
       dealValue: 0, monthlyRevenue: 0, priority: 'medium', lastContactDate: today(), nextFollowUp: calculateNextFollowUp(stages[0], cadence),
-      notes: '', tags: [], interactions: [], notesTimeline: [], attachments: [], createdAt: new Date().toISOString(), stageChangedAt: new Date().toISOString() };
+      notes: '', tags: [], interactions: [], notesTimeline: [], attachments: [], clientStatus: 'lead', convertedAt: null, createdAt: new Date().toISOString(), stageChangedAt: new Date().toISOString() };
     setData(prev => ({...prev, contacts: [nc, ...prev.contacts]}));
     setSelectedContact(nc);
     // Focus the name input after the detail panel animates in
@@ -2731,6 +2985,7 @@ const App = ({ user, initialCloudData }) => {
     { id: 'contacts', label: 'Contacts', icon: <Icon name="users" size={16} /> },
     { id: 'deals', label: 'Deals', icon: <Icon name="dollar" size={16} /> },
     { id: 'followups', label: 'Follow-ups', icon: <Icon name="phone" size={16} /> },
+    { id: 'clients', label: 'Clients', icon: <Icon name="sparkles" size={16} /> },
     { id: 'digest', label: 'Weekly Digest', icon: <Icon name="clipboard" size={16} /> },
     { id: 'roi', label: 'Source ROI', icon: <Icon name="chart" size={16} /> },
     { id: 'import', label: 'Import', icon: <Icon name="upload" size={16} /> },
@@ -2761,12 +3016,13 @@ const App = ({ user, initialCloudData }) => {
       case 'dashboard': return <DashboardView contacts={contacts} stages={stages} stagnation={stagnation} onShowStagnant={() => { setStagnantOnly(true); setActiveTab('contacts'); }} />;
       case 'contacts': return <ContactsView contacts={contacts} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} stages={stages} cadence={cadence} stagnation={stagnation} stagnantOnly={stagnantOnly} onClearStagnant={() => setStagnantOnly(false)} />;
       case 'deals': return <DealsView contacts={contacts} stages={stages} />;
+      case 'clients': return <ClientsView contacts={contacts} onSelectContact={setSelectedContact} />;
       case 'followups': return <FollowUpsView contacts={contacts} stages={stages} onSelectContact={setSelectedContact} onUpdateContact={handleUpdateContact} cadence={cadence} />;
       case 'digest': return <WeeklyDigestView contacts={contacts} stages={stages} />;
       case 'roi': return <SourceROIView contacts={contacts} />;
       case 'import': return <CSVImportView stages={stages} onImport={handleBatchImport} />;
       case 'scratchpad': return <ScratchpadView scratchpad={data.scratchpad || ''} onUpdate={handleUpdateScratchpad} />;
-      case 'settings': return <SettingsView stages={stages} onUpdateStages={handleUpdateStages} onRenameStage={handleRenameStage} cadence={cadence} onUpdateCadence={handleUpdateCadence} stagnation={stagnation} onUpdateStagnation={handleUpdateStagnation} contacts={contacts} onExport={handleExport} onRestoreBackup={handleRestoreFromBackup} onDownloadJSON={handleDownloadJSON} onRestoreFile={handleRestoreFromFile} onRestorePreUpdate={handleRestorePreUpdate} />;
+      case 'settings': return <SettingsView stages={stages} onUpdateStages={handleUpdateStages} onRenameStage={handleRenameStage} cadence={cadence} onUpdateCadence={handleUpdateCadence} stagnation={stagnation} onUpdateStagnation={handleUpdateStagnation} clientCheckInDays={data.clientCheckInDays} onUpdateClientCheckIn={handleUpdateClientCheckIn} contacts={contacts} onExport={handleExport} onRestoreBackup={handleRestoreFromBackup} onDownloadJSON={handleDownloadJSON} onRestoreFile={handleRestoreFromFile} onRestorePreUpdate={handleRestorePreUpdate} />;
       default: return <DashboardView contacts={contacts} stages={stages} stagnation={stagnation} onShowStagnant={() => { setStagnantOnly(true); setActiveTab('contacts'); }} />;
     }
   };
@@ -2876,7 +3132,7 @@ const App = ({ user, initialCloudData }) => {
           {' \u00B7 '}<a href="/terms.html" style={{color:'inherit', textDecoration:'underline'}}>Terms</a>
             </div>
           </div>
-          {selectedContact && <ContactDetail contact={selectedContact} onClose={() => setSelectedContact(null)} onUpdate={handleUpdateContact} stages={stages} onDelete={handleDeleteContact} cadence={cadence} />}
+          {selectedContact && <ContactDetail contact={selectedContact} onClose={() => setSelectedContact(null)} onUpdate={handleUpdateContact} stages={stages} onDelete={handleDeleteContact} cadence={cadence} clientCheckInDays={data.clientCheckInDays} />}
         </div>
       </div>
       {/* Mobile bottom nav */}
@@ -2888,7 +3144,7 @@ const App = ({ user, initialCloudData }) => {
               <span>{tab.label}</span>
             </div>
           ))}
-          <div className={'mobile-tab ' + (['digest','roi','import','scratchpad','settings'].includes(activeTab) || mobileMoreOpen ? 'active' : '')} onClick={() => setMobileMoreOpen(v => !v)}>
+          <div className={'mobile-tab ' + (['clients','digest','roi','import','scratchpad','settings'].includes(activeTab) || mobileMoreOpen ? 'active' : '')} onClick={() => setMobileMoreOpen(v => !v)}>
             <span><Icon name="menu" size={18} /></span>
             <span>More</span>
           </div>
