@@ -424,7 +424,7 @@ const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence, 
     const wonStage = (stgs.includes('Closed Won')) ? 'Closed Won' : form.stage;
     const event = {
       id: Math.random().toString(36).substr(2, 9),
-      text: 'Converted to client — MRR $' + mrr.toLocaleString(),
+      text: 'Converted to client. MRR $' + mrr.toLocaleString(),
       type: 'Conversion',
       date: now
     };
@@ -557,7 +557,7 @@ const ContactDetail = ({ contact, onClose, onUpdate, stages, onDelete, cadence, 
         ) : (
           <div className="mb-4 rounded-lg border p-3" style={{background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.3)'}}>
             <div className="text-sm font-semibold text-emerald-700 mb-1">Convert to client</div>
-            <div className="text-xs text-gray-500 mb-2">Won the deal? Set their monthly revenue and convert — they’ll leave the lead pipeline and start a client check-in cycle.</div>
+            <div className="text-xs text-gray-500 mb-2">Won the deal? Set their monthly revenue and convert, and they’ll leave the lead pipeline and start a client check-in cycle.</div>
             <div className="flex gap-2">
               <div className="flex-1 flex items-center gap-1.5">
                 <span className="text-sm text-gray-500">$</span>
@@ -2238,7 +2238,7 @@ const AuthScreen = ({ onAuth, loading }) => {
       let msg = err.message || 'Something went wrong';
       if (/invalid login credentials/i.test(msg)) msg = 'Email or password is incorrect.';
       else if (/user already registered/i.test(msg)) msg = 'An account with that email already exists. Try signing in.';
-      else if (/email not confirmed/i.test(msg)) msg = 'Please confirm your email first — check your inbox.';
+      else if (/email not confirmed/i.test(msg)) msg = 'Please confirm your email first. Check your inbox.';
       else if (/rate limit/i.test(msg)) msg = 'Too many attempts. Please wait a moment and try again.';
       setError(msg);
     }
@@ -3043,7 +3043,7 @@ const App = ({ user, initialCloudData }) => {
         {staleVersion && (
           <div role="alert" style={{background:'#7f1d1d',color:'#fff',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'center',gap:12,fontSize:13,fontWeight:500,flexShrink:0}}>
             <Icon name="alert" size={16} />
-            <span>This app is out of date. Your local notes are safe — refresh to reconnect to the cloud.</span>
+            <span>This app is out of date. Your local notes are safe. Refresh to reconnect to the cloud.</span>
             <button
               onClick={() => { try { location.reload(); } catch(_) { window.location.href = window.location.pathname; } }}
               style={{background:'#fff',color:'#7f1d1d',border:'none',borderRadius:6,padding:'6px 14px',fontSize:13,fontWeight:600,cursor:'pointer'}}
@@ -3059,7 +3059,7 @@ const App = ({ user, initialCloudData }) => {
             {backupIsStale ? <Icon name="alert" size={14} /> : <Icon name="download" size={14} />} Backup
           </button>
           {CURRENT_UID && cloudStatus === 'saving' && <span className="sync-badge sync-saving flex items-center gap-1"><Icon name="refresh" size={11} /> Saving...</span>}
-          {CURRENT_UID && cloudStatus === 'error' && <button onClick={() => cloudSave(data)} className="sync-badge sync-error flex items-center gap-1" title="Sync failed — click to retry"><Icon name="alert" size={11} /> Sync failed</button>}
+          {CURRENT_UID && cloudStatus === 'error' && <button onClick={() => cloudSave(data)} className="sync-badge sync-error flex items-center gap-1" title="Sync failed. Click to retry"><Icon name="alert" size={11} /> Sync failed</button>}
           {CURRENT_UID && (cloudStatus === 'saved' || cloudStatus === 'idle') && <span className="sync-badge sync-online flex items-center gap-1"><Icon name="cloud" size={11} /> Synced</span>}
           <button onClick={() => setDarkMode(d => !d)} className="theme-toggle" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} />
           <button onClick={() => setShowShortcuts(true)} className="text-xs text-gray-400 hover:text-gray-600 cursor-pointer" title="Keyboard shortcuts"><span className="kbd">?</span></button>
@@ -3105,7 +3105,7 @@ const App = ({ user, initialCloudData }) => {
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-amber-600 flex-shrink-0"><Icon name="alert" size={20} /></span>
-                <span className="font-medium text-amber-800 text-sm">Pre-update backups found — select one to restore your check-ins:</span>
+                <span className="font-medium text-amber-800 text-sm">Pre-update backups found. Select one to restore your check-ins:</span>
               </div>
               <button onClick={() => setShowRestoreBanner(false)} className="text-amber-400 hover:text-amber-600 text-xl leading-none flex-shrink-0">{'\u00D7'}</button>
             </div>
