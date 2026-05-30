@@ -2278,6 +2278,19 @@ const AuthScreen = ({ onAuth, loading }) => {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    setError(''); setInfo('');
+    try {
+      const { error: oauthErr } = await _sb.auth.signInWithOAuth({
+        provider: 'apple',
+        options: { redirectTo: window.location.origin + window.location.pathname },
+      });
+      if (oauthErr) throw oauthErr;
+    } catch (err) {
+      setError(err.message || 'Could not start Apple sign-in.');
+    }
+  };
+
   // Post-signup "check your email" screen
   if (confirmationSent) {
     return (
@@ -2341,6 +2354,26 @@ const AuthScreen = ({ onAuth, loading }) => {
                 <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
               </svg>
               Continue with Google
+            </button>
+            <button
+              type="button"
+              onClick={handleAppleSignIn}
+              disabled={checking}
+              style={{
+                display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+                width:'100%', padding:'11px 16px', marginBottom:14,
+                background:'var(--bg-secondary)', color:'var(--text-primary)',
+                border:'1px solid var(--input-border)', borderRadius:8,
+                fontSize:14, fontWeight:500, cursor: checking ? 'not-allowed' : 'pointer',
+                opacity: checking ? 0.5 : 1, transition:'background 0.15s'
+              }}
+              onMouseOver={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
+              onMouseOut={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+              </svg>
+              Continue with Apple
             </button>
             <div style={{display:'flex', alignItems:'center', gap:12, margin:'0 0 14px', color:'var(--text-tertiary)', fontSize:11, textTransform:'uppercase', letterSpacing:1}}>
               <div style={{flex:1, height:1, background:'var(--border)'}} />
